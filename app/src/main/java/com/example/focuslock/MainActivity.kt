@@ -22,6 +22,7 @@ class MainActivity : AppCompatActivity() {
         binding.webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
+                if (request.isForMainFrame.not()) return false
                 return if (WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
                     false
                 } else {

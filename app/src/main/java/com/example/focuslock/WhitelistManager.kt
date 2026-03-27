@@ -35,6 +35,8 @@ object WhitelistManager {
 
     fun isUrlAllowed(context: Context, url: String): Boolean {
         val normalized = url.removePrefix("https://").removePrefix("http://").removePrefix("www.")
+            .split("?")[0]
+            .split("#")[0]
         val whitelist = getWhitelist(context)
 
         for (entry in whitelist) {
