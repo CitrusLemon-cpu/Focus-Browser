@@ -166,23 +166,38 @@ class SettingsActivity : AppCompatActivity() {
         val nameInput = EditText(this).apply {
             hint = "Display name (optional)"
         }
-        urlInput.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus && nameInput.text.isNullOrBlank()) {
-                val urlText = urlInput.text.toString().trim()
-                if (urlText.isNotEmpty()) {
-                    nameInput.hint = "Fetching title..."
-                    TitleFetcher.fetch(urlText) { title ->
-                        runOnUiThread {
-                            nameInput.hint = "Display name (optional)"
-                            if (title != null && nameInput.text.isNullOrBlank()) {
-                                nameInput.setText(title)
-                            }
-                        }
+        val fetchBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Fetch Title"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 8
+                bottomMargin = 8
+            }
+        }
+        fetchBtn.setOnClickListener {
+            val urlText = urlInput.text.toString().trim()
+            if (urlText.isEmpty()) {
+                urlInput.error = "Enter a URL first"
+                return@setOnClickListener
+            }
+            fetchBtn.isEnabled = false
+            fetchBtn.text = "Fetching..."
+            TitleFetcher.fetch(urlText) { title ->
+                runOnUiThread {
+                    fetchBtn.isEnabled = true
+                    fetchBtn.text = "Fetch Title"
+                    if (title != null) {
+                        nameInput.setText(title)
+                    } else {
+                        Toast.makeText(this@SettingsActivity, "Could not fetch title", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
         }
         layout.addView(urlInput)
+        layout.addView(fetchBtn)
         layout.addView(nameInput)
 
         AlertDialog.Builder(this)
@@ -223,39 +238,47 @@ class SettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 32, 48, 0)
         }
-        val nameInput = EditText(this).apply {
-            hint = "Display name"
-            setText(entry.name)
-        }
         val urlInput = EditText(this).apply {
             hint = "URL"
             setText(entry.url)
         }
-        urlInput.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) {
-                val urlText = urlInput.text.toString().trim()
-                val currentName = nameInput.text.toString().trim()
-                // Only auto-fetch if name is blank or still matches the URL (never been custom-named)
-                if (urlText.isNotEmpty() && (currentName.isBlank() || currentName == entry.url || currentName == urlText)) {
-                    nameInput.hint = "Fetching title..."
-                    TitleFetcher.fetch(urlText) { title ->
-                        runOnUiThread {
-                            nameInput.hint = "Display name"
-                            if (title != null) {
-                                val stillAutoName = nameInput.text.toString().trim().let {
-                                    it.isBlank() || it == entry.url || it == urlText
-                                }
-                                if (stillAutoName) {
-                                    nameInput.setText(title)
-                                }
-                            }
-                        }
+        val nameInput = EditText(this).apply {
+            hint = "Display name"
+            setText(entry.name)
+        }
+        val fetchBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Fetch Title"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 8
+                bottomMargin = 8
+            }
+        }
+        fetchBtn.setOnClickListener {
+            val urlText = urlInput.text.toString().trim()
+            if (urlText.isEmpty()) {
+                urlInput.error = "Enter a URL first"
+                return@setOnClickListener
+            }
+            fetchBtn.isEnabled = false
+            fetchBtn.text = "Fetching..."
+            TitleFetcher.fetch(urlText) { title ->
+                runOnUiThread {
+                    fetchBtn.isEnabled = true
+                    fetchBtn.text = "Fetch Title"
+                    if (title != null) {
+                        nameInput.setText(title)
+                    } else {
+                        Toast.makeText(this@SettingsActivity, "Could not fetch title", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
         }
-        layout.addView(nameInput)
         layout.addView(urlInput)
+        layout.addView(fetchBtn)
+        layout.addView(nameInput)
 
         AlertDialog.Builder(this)
             .setTitle("Edit Whitelist Entry")
