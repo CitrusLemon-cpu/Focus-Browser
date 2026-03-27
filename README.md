@@ -1,1 +1,2 @@
-# Focus-Browser
+# FocusLock
+focus based browser
