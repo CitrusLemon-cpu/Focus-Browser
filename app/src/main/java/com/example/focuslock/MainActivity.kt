@@ -45,6 +45,13 @@ class MainActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 url?.let { binding.urlBar.setText(it) }
             }
+
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                super.doUpdateVisitedHistory(view, url, isReload)
+                if (url != null && !WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
+                    view?.post { showHome() }
+                }
+            }
         }
 
         binding.urlBar.setOnEditorActionListener { _, actionId, _ ->
@@ -58,6 +65,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         showHome()
+
+        binding.btnHome.setOnClickListener {
+            showHome()
+        }
 
         binding.fab.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
