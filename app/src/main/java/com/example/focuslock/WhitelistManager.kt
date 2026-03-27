@@ -77,7 +77,7 @@ object WhitelistManager {
 
             if (!normalizedEntry.contains("/")) {
                 // Rule 1: Domain-only entry — allow any subdomain + any path
-                val urlDomain = normalizedUrl.substringBefore("/")
+                val urlDomain = normalizedUrl.substringBefore("/").substringBefore("?")
                 if (urlDomain == normalizedEntry || urlDomain.endsWith(".$normalizedEntry")) {
                     return true
                 }
