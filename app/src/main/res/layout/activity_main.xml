@@ -1,23 +1,73 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     tools:context=".MainActivity">
 
-    <WebView
-        android:id="@+id/webView"
+    <!-- URL/Search bar -->
+    <EditText
+        android:id="@+id/urlBar"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab"
-        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="16dp"
-        android:src="@android:drawable/ic_menu_manage"
-        android:contentDescription="Settings" />
+        android:hint="Search or enter URL"
+        android:inputType="textUri"
+        android:imeOptions="actionGo"
+        android:singleLine="true"
+        android:padding="12dp"
+        android:background="@android:color/white"
+        android:elevation="4dp" />
 
-</FrameLayout>
+    <!-- Content area: WebView + Home screen overlay -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- Home screen overlay -->
+        <LinearLayout
+            android:id="@+id/homeScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="@android:color/white"
+            android:visibility="visible">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/homeList"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/emptyMessage"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="No sites added yet.\nTap the ⚙ button to add sites in Settings."
+                android:textSize="16sp"
+                android:textColor="@android:color/darker_gray"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fab"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"
+            android:src="@android:drawable/ic_menu_manage"
+            android:contentDescription="Settings" />
+
+    </FrameLayout>
+
+</LinearLayout>
