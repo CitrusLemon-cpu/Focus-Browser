@@ -36,8 +36,10 @@ class MainActivity : AppCompatActivity() {
                 return if (WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
                     false
                 } else {
-                    android.widget.Toast.makeText(this@MainActivity, "Blocked: $url", android.widget.Toast.LENGTH_SHORT).show()
-                    view?.post { showHome() }
+                    view?.post {
+                        showHome()
+                        showBlockedDialog(url)
+                    }
                     true
                 }
             }
@@ -55,8 +57,10 @@ class MainActivity : AppCompatActivity() {
                 super.doUpdateVisitedHistory(view, url, isReload)
                 if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
                     if (!WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
-                        android.widget.Toast.makeText(this@MainActivity, "Blocked: $url", android.widget.Toast.LENGTH_SHORT).show()
-                        view?.post { showHome() }
+                        view?.post {
+                            showHome()
+                            showBlockedDialog(url)
+                        }
                     }
                 }
             }
@@ -157,6 +161,20 @@ class MainActivity : AppCompatActivity() {
                 }
             )
         }
+    }
+
+    private fun showBlockedDialog(url: String) {
+        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        AlertDialog.Builder(this)
+            .setTitle("URL Blocked")
+            .setMessage(url)
+            .setPositiveButton("Copy") { _, _ ->
+                val clip = android.content.ClipData.newPlainText("Blocked URL", url)
+                clipboard.setPrimaryClip(clip)
+                android.widget.Toast.makeText(this, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Dismiss", null)
+            .show()
     }
 
     @Suppress("DEPRECATION")
