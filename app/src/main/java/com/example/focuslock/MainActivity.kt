@@ -1,12 +1,19 @@
 package com.example.focuslock
 
+import android.content.Context
 import android.content.Intent
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.webkit.GeolocationPermissions
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
@@ -22,6 +29,7 @@ import com.example.focuslock.databinding.ActivityMainBinding
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private var desktopMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,16 +38,36 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.webView.settings.javaScriptEnabled = true
+        binding.webView.settings.domStorageEnabled = true
+
+        binding.webView.settings.safeBrowsingEnabled = true
+        binding.webView.settings.allowFileAccess = false
+        binding.webView.settings.allowContentAccess = false
+        binding.webView.settings.setGeolocationEnabled(false)
+        binding.webView.settings.databaseEnabled = false
+
+        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+        desktopMode = prefs.getBoolean("desktop_mode", false)
+        applyDesktopMode()
+
         binding.webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val url = request?.url?.toString() ?: return false
+                val url = request?.url ?: return false
                 if (request.isForMainFrame.not()) return false
-                return if (WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
+
+                if (url.scheme == "http") {
+                    val httpsUrl = url.buildUpon().scheme("https").build().toString()
+                    view?.post { view.loadUrl(httpsUrl) }
+                    return true
+                }
+
+                val urlString = url.toString()
+                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlString)) {
                     false
                 } else {
                     view?.post {
                         showHome()
-                        showBlockedDialog(url)
+                        showBlockedDialog(urlString)
                     }
                     true
                 }
@@ -67,6 +95,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        binding.webView.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                request?.deny()
+            }
+
+            override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
+                callback?.invoke(origin, false, false)
+            }
+        }
+
         binding.urlBar.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_GO) {
                 val input = binding.urlBar.text.toString().trim()
@@ -83,8 +121,44 @@ class MainActivity : AppCompatActivity() {
             showHome()
         }
 
+        binding.btnDesktopMode.setOnClickListener {
+            desktopMode = !desktopMode
+            getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("desktop_mode", desktopMode)
+                .apply()
+            applyDesktopMode()
+            if (binding.webView.visibility == View.VISIBLE && binding.webView.url != "about:blank") {
+                binding.webView.reload()
+            }
+        }
+
         binding.fab.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
+        }
+    }
+
+    private fun applyDesktopMode() {
+        val settings = binding.webView.settings
+        if (desktopMode) {
+            settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        } else {
+            settings.userAgentString = WebSettings.getDefaultUserAgent(this)
+        }
+        settings.useWideViewPort = desktopMode
+        settings.loadWithOverviewMode = desktopMode
+        updateDesktopModeIcon()
+    }
+
+    private fun updateDesktopModeIcon() {
+        if (desktopMode) {
+            val color = com.google.android.material.R.attr.colorPrimary
+            val typedValue = android.util.TypedValue()
+            theme.resolveAttribute(color, typedValue, true)
+            val colorInt = typedValue.data
+            binding.btnDesktopMode.colorFilter = PorterDuffColorFilter(colorInt, PorterDuff.Mode.SRC_IN)
+        } else {
+            binding.btnDesktopMode.clearColorFilter()
         }
     }
 
@@ -93,6 +167,14 @@ class MainActivity : AppCompatActivity() {
         if (binding.homeScreen.visibility == View.VISIBLE) {
             refreshHomeList()
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        android.webkit.CookieManager.getInstance().removeAllCookies(null)
+        binding.webView.clearCache(true)
+        binding.webView.clearFormData()
+        binding.webView.clearHistory()
     }
 
     private fun navigateToInput(input: String) {

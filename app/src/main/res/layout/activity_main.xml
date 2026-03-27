@@ -35,6 +35,15 @@
             android:singleLine="true"
             android:padding="12dp" />
 
+        <ImageButton
+            android:id="@+id/btnDesktopMode"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@android:drawable/ic_menu_compass"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Toggle desktop mode"
+            android:scaleType="centerInside" />
+
     </LinearLayout>
 
     <!-- Content area: WebView + Home screen overlay -->
