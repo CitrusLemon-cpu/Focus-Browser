@@ -175,8 +175,9 @@ class SettingsActivity : AppCompatActivity() {
                             return@setOnClickListener
                         }
 
+                        val normalizedInput = WhitelistManager.normalizeUrl(entry)
                         val existing = WhitelistManager.getWhitelist(this@SettingsActivity)
-                        if (existing.contains(entry)) {
+                        if (existing.contains(normalizedInput)) {
                             input.error = "Entry already exists"
                             return@setOnClickListener
                         }
@@ -219,9 +220,10 @@ class SettingsActivity : AppCompatActivity() {
                             return@setOnClickListener
                         }
 
-                        if (newEntry != oldEntry) {
+                        val normalizedNew = WhitelistManager.normalizeUrl(newEntry)
+                        if (normalizedNew != oldEntry) {
                             val existing = WhitelistManager.getWhitelist(this@SettingsActivity)
-                            if (existing.contains(newEntry)) {
+                            if (existing.contains(normalizedNew)) {
                                 input.error = "Entry already exists"
                                 return@setOnClickListener
                             }

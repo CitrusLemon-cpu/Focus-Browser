@@ -19,10 +19,44 @@ object WhitelistManager {
         return list
     }
 
+    fun normalizeUrl(input: String): String {
+        var result = input.trim()
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .removePrefix("www.")
+            .removePrefix("m.")
+        // Preserve trailing * wildcard
+        val hasWildcard = result.endsWith("*")
+        if (hasWildcard) {
+            result = result.removeSuffix("*")
+        }
+        // Strip query string and fragment
+        result = result.split("?")[0].split("#")[0]
+        // Lowercase
+        result = result.lowercase()
+        // Remove trailing slash for cleaner storage (but not if there's a path)
+        if (result.endsWith("/") && !result.contains("/", startIndex = 0)) {
+            // Only strip trailing slash for bare domains like "youtube.com/"
+            result = result.removeSuffix("/")
+        }
+        // Actually, let's be more careful: strip trailing slash only if it's the only slash
+        // e.g. "youtube.com/" → "youtube.com" but "instagram.com/inbox/" stays
+        val slashCount = result.count { it == '/' }
+        if (slashCount == 1 && result.endsWith("/")) {
+            result = result.removeSuffix("/")
+        }
+        // Re-add wildcard
+        if (hasWildcard) {
+            result = "$result*"
+        }
+        return result
+    }
+
     fun addEntry(context: Context, entry: String) {
+        val normalized = normalizeUrl(entry)
         val list = getWhitelist(context).toMutableList()
-        if (!list.contains(entry)) {
-            list.add(entry)
+        if (!list.contains(normalized)) {
+            list.add(normalized)
             saveWhitelist(context, list)
         }
     }
@@ -34,30 +68,31 @@ object WhitelistManager {
     }
 
     fun updateEntry(context: Context, oldEntry: String, newEntry: String) {
+        val normalizedNew = normalizeUrl(newEntry)
         val list = getWhitelist(context).toMutableList()
         val index = list.indexOf(oldEntry)
         if (index != -1) {
-            list[index] = newEntry
+            list[index] = normalizedNew
             saveWhitelist(context, list)
         }
     }
 
     fun isUrlAllowed(context: Context, url: String): Boolean {
-        val normalized = url.removePrefix("https://").removePrefix("http://").removePrefix("www.")
-            .split("?")[0]
-            .split("#")[0]
-            .lowercase()
+        val normalized = normalizeUrl(url)
         val whitelist = getWhitelist(context)
 
         for (entry in whitelist) {
-            val normalizedEntry = entry.removePrefix("www.").lowercase()
+            // Entries are already normalized on save, but normalize again for safety
+            val normalizedEntry = normalizeUrl(entry)
 
             if (!normalizedEntry.endsWith("*")) {
-                val domain = normalized.split("/")[0]
-                if (domain == normalizedEntry) return true
+                // Case 1: Exact domain match, any path
+                val urlDomain = normalized.split("/")[0]
+                if (urlDomain == normalizedEntry) return true
             } else {
                 val pattern = normalizedEntry.removeSuffix("*")
                 if (pattern.contains("/")) {
+                    // Case 3: Domain + path prefix match
                     val entryDomain = pattern.split("/")[0]
                     val entryPathPrefix = pattern.substring(pattern.indexOf("/"))
                     val urlDomain = normalized.split("/")[0]
@@ -68,6 +103,7 @@ object WhitelistManager {
                     }
                     if (urlDomain == entryDomain && urlPath.startsWith(entryPathPrefix)) return true
                 } else {
+                    // Case 2: Domain + all subdomains
                     val urlDomain = normalized.split("/")[0]
                     if (urlDomain == pattern || urlDomain.endsWith(".$pattern")) return true
                 }
