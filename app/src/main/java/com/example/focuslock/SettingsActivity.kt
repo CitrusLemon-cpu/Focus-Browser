@@ -48,6 +48,17 @@ class SettingsActivity : AppCompatActivity() {
         binding.recyclerView.adapter = adapter
         binding.btnAdd.setOnClickListener { showAddEntryDialog() }
         binding.btnChangePassword.setOnClickListener { showChangePasswordFlow() }
+        binding.btnClearData.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Clear Browsing Data")
+                .setMessage("Clear all browsing data? This will remove cookies, cache, and form data.")
+                .setPositiveButton("Clear") { _, _ ->
+                    android.webkit.CookieManager.getInstance().removeAllCookies(null)
+                    Toast.makeText(this, "Browsing data cleared", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
     }
 
     private fun refreshList() {
