@@ -154,7 +154,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         val input = EditText(this).apply {
-            hint = "e.g. google.com or google.com*"
+            hint = "e.g. instagram.com or instagram.com/direct/"
         }
 
         layout.addView(input)
@@ -198,7 +198,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         val input = EditText(this).apply {
-            hint = "e.g. google.com or google.com*"
+            hint = "e.g. instagram.com or instagram.com/direct/"
             setText(oldEntry)
         }
 

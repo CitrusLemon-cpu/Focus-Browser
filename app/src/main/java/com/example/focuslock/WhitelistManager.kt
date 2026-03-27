@@ -25,30 +25,19 @@ object WhitelistManager {
             .removePrefix("http://")
             .removePrefix("www.")
             .removePrefix("m.")
-        // Preserve trailing * wildcard
-        val hasWildcard = result.endsWith("*")
-        if (hasWildcard) {
-            result = result.removeSuffix("*")
-        }
-        // Strip query string and fragment
-        result = result.split("?")[0].split("#")[0]
+        // Strip fragment only — preserve query strings
+        result = result.split("#")[0]
         // Lowercase
         result = result.lowercase()
-        // Remove trailing slash for cleaner storage (but not if there's a path)
-        if (result.endsWith("/") && !result.contains("/", startIndex = 0)) {
-            // Only strip trailing slash for bare domains like "youtube.com/"
+        // Strip trailing slash only for bare domains (no path component)
+        // e.g. "youtube.com/" → "youtube.com" but "instagram.com/direct/" stays as-is
+        if (!result.contains("/")) {
+            // bare domain, no slash to strip
+        } else if (result.indexOf("/") == result.length - 1) {
+            // single trailing slash on what looks like a bare domain → strip
             result = result.removeSuffix("/")
         }
-        // Actually, let's be more careful: strip trailing slash only if it's the only slash
-        // e.g. "youtube.com/" → "youtube.com" but "instagram.com/inbox/" stays
-        val slashCount = result.count { it == '/' }
-        if (slashCount == 1 && result.endsWith("/")) {
-            result = result.removeSuffix("/")
-        }
-        // Re-add wildcard
-        if (hasWildcard) {
-            result = "$result*"
-        }
+        // For path entries (multiple slashes or path with content), preserve as-is
         return result
     }
 
@@ -78,34 +67,24 @@ object WhitelistManager {
     }
 
     fun isUrlAllowed(context: Context, url: String): Boolean {
-        val normalized = normalizeUrl(url)
+        val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
 
-        for (entry in whitelist) {
-            // Entries are already normalized on save, but normalize again for safety
+        for (rawEntry in whitelist) {
+            // Strip any legacy '*' suffix for backward compatibility
+            val entry = rawEntry.trimEnd('*')
             val normalizedEntry = normalizeUrl(entry)
 
-            if (!normalizedEntry.endsWith("*")) {
-                // Case 1: Exact domain match, any path
-                val urlDomain = normalized.split("/")[0]
-                if (urlDomain == normalizedEntry) return true
+            if (!normalizedEntry.contains("/")) {
+                // Rule 1: Domain-only entry — allow any subdomain + any path
+                val urlDomain = normalizedUrl.substringBefore("/")
+                if (urlDomain == normalizedEntry || urlDomain.endsWith(".$normalizedEntry")) {
+                    return true
+                }
             } else {
-                val pattern = normalizedEntry.removeSuffix("*")
-                if (pattern.contains("/")) {
-                    // Case 3: Domain + path prefix match
-                    val entryDomain = pattern.split("/")[0]
-                    val entryPathPrefix = pattern.substring(pattern.indexOf("/"))
-                    val urlDomain = normalized.split("/")[0]
-                    val urlPath = if (normalized.contains("/")) {
-                        "/" + normalized.substringAfter("/", "")
-                    } else {
-                        ""
-                    }
-                    if (urlDomain == entryDomain && urlPath.startsWith(entryPathPrefix)) return true
-                } else {
-                    // Case 2: Domain + all subdomains
-                    val urlDomain = normalized.split("/")[0]
-                    if (urlDomain == pattern || urlDomain.endsWith(".$pattern")) return true
+                // Rule 2: Path entry — URL must start with this prefix
+                if (normalizedUrl.startsWith(normalizedEntry)) {
+                    return true
                 }
             }
         }
