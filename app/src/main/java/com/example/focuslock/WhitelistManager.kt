@@ -3,18 +3,30 @@ package com.example.focuslock
 import android.content.Context
 import org.json.JSONArray
 
+data class WhitelistEntry(val url: String, val name: String)
+
 object WhitelistManager {
 
     private const val PREFS_NAME = "focus_lock_prefs"
     private const val KEY_WHITELIST = "whitelist"
 
-    fun getWhitelist(context: Context): List<String> {
+    fun getWhitelist(context: Context): List<WhitelistEntry> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = prefs.getString(KEY_WHITELIST, "[]") ?: "[]"
         val array = JSONArray(json)
-        val list = mutableListOf<String>()
+        val list = mutableListOf<WhitelistEntry>()
         for (i in 0 until array.length()) {
-            list.add(array.getString(i))
+            val element = array.get(i)
+            if (element is org.json.JSONObject) {
+                list.add(WhitelistEntry(
+                    url = element.getString("url"),
+                    name = element.optString("name", element.getString("url"))
+                ))
+            } else {
+                val raw = element.toString()
+                val url = normalizeUrl(raw.trimEnd('*'))
+                list.add(WhitelistEntry(url = url, name = raw))
+            }
         }
         return list
     }
@@ -25,43 +37,54 @@ object WhitelistManager {
             .removePrefix("http://")
             .removePrefix("www.")
             .removePrefix("m.")
-        // Strip fragment only — preserve query strings
         result = result.split("#")[0]
-        // Lowercase
-        result = result.lowercase()
-        // Strip trailing slash only for bare domains (no path component)
-        // e.g. "youtube.com/" → "youtube.com" but "instagram.com/direct/" stays as-is
+        val domainEnd = when {
+            result.indexOf("/") != -1 -> result.indexOf("/")
+            result.indexOf("?") != -1 -> result.indexOf("?")
+            else -> result.length
+        }
+        result = result.substring(0, domainEnd).lowercase() + result.substring(domainEnd)
         if (!result.contains("/")) {
             // bare domain, no slash to strip
         } else if (result.indexOf("/") == result.length - 1) {
-            // single trailing slash on what looks like a bare domain → strip
             result = result.removeSuffix("/")
         }
-        // For path entries (multiple slashes or path with content), preserve as-is
         return result
     }
 
-    fun addEntry(context: Context, entry: String) {
-        val normalized = normalizeUrl(entry)
+    fun addEntry(context: Context, url: String, name: String) {
+        val normalizedUrl = normalizeUrl(url)
         val list = getWhitelist(context).toMutableList()
-        if (!list.contains(normalized)) {
-            list.add(normalized)
+        if (list.none { it.url == normalizedUrl }) {
+            val displayName = if (name.isBlank()) normalizedUrl else name.trim()
+            list.add(WhitelistEntry(url = normalizedUrl, name = displayName))
             saveWhitelist(context, list)
         }
     }
 
-    fun removeEntry(context: Context, entry: String) {
+    fun removeEntry(context: Context, url: String) {
         val list = getWhitelist(context).toMutableList()
-        list.remove(entry)
+        list.removeAll { it.url == url }
         saveWhitelist(context, list)
     }
 
-    fun updateEntry(context: Context, oldEntry: String, newEntry: String) {
-        val normalizedNew = normalizeUrl(newEntry)
+    fun updateEntry(context: Context, oldUrl: String, newUrl: String, newName: String) {
+        val normalizedNew = normalizeUrl(newUrl)
         val list = getWhitelist(context).toMutableList()
-        val index = list.indexOf(oldEntry)
+        val index = list.indexOfFirst { it.url == oldUrl }
         if (index != -1) {
-            list[index] = normalizedNew
+            val displayName = if (newName.isBlank()) normalizedNew else newName.trim()
+            list[index] = WhitelistEntry(url = normalizedNew, name = displayName)
+            saveWhitelist(context, list)
+        }
+    }
+
+    fun updateEntryName(context: Context, url: String, newName: String) {
+        val list = getWhitelist(context).toMutableList()
+        val index = list.indexOfFirst { it.url == url }
+        if (index != -1) {
+            val displayName = if (newName.isBlank()) url else newName.trim()
+            list[index] = WhitelistEntry(url = url, name = displayName)
             saveWhitelist(context, list)
         }
     }
@@ -70,19 +93,15 @@ object WhitelistManager {
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
 
-        for (rawEntry in whitelist) {
-            // Strip any legacy '*' suffix for backward compatibility
-            val entry = rawEntry.trimEnd('*')
-            val normalizedEntry = normalizeUrl(entry)
+        for (whitelistEntry in whitelist) {
+            val normalizedEntry = normalizeUrl(whitelistEntry.url)
 
             if (!normalizedEntry.contains("/")) {
-                // Rule 1: Domain-only entry — allow any subdomain + any path
                 val urlDomain = normalizedUrl.substringBefore("/").substringBefore("?")
                 if (urlDomain == normalizedEntry || urlDomain.endsWith(".$normalizedEntry")) {
                     return true
                 }
             } else {
-                // Rule 2: Path entry — URL must start with this prefix
                 if (normalizedUrl.startsWith(normalizedEntry)) {
                     return true
                 }
@@ -91,10 +110,13 @@ object WhitelistManager {
         return false
     }
 
-    private fun saveWhitelist(context: Context, list: List<String>) {
+    private fun saveWhitelist(context: Context, list: List<WhitelistEntry>) {
         val array = JSONArray()
         for (entry in list) {
-            array.put(entry)
+            val obj = org.json.JSONObject()
+            obj.put("url", entry.url)
+            obj.put("name", entry.name)
+            array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
