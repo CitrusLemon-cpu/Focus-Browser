@@ -9,6 +9,7 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -139,21 +140,23 @@ class MainActivity : AppCompatActivity() {
             binding.homeList.adapter = HomeAdapter(
                 whitelist.toMutableList(),
                 onClick = { entry ->
-                    val cleaned = entry.removeSuffix("*")
-                    val url = if (cleaned.startsWith("http://") || cleaned.startsWith("https://")) {
-                        cleaned
+                    val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
+                        entry.url
                     } else {
-                        "https://$cleaned"
+                        "https://${entry.url}"
                     }
                     showWebView()
                     binding.webView.loadUrl(url)
                 },
+                onRename = { entry ->
+                    showRenameDialog(entry)
+                },
                 onDelete = { entry ->
                     AlertDialog.Builder(this)
                         .setTitle("Remove Entry")
-                        .setMessage("Are you sure you want to remove $entry?")
+                        .setMessage("Are you sure you want to remove ${entry.name}?")
                         .setPositiveButton("Remove") { _, _ ->
-                            WhitelistManager.removeEntry(this, entry)
+                            WhitelistManager.removeEntry(this, entry.url)
                             refreshHomeList()
                         }
                         .setNegativeButton("Cancel", null)
@@ -161,6 +164,31 @@ class MainActivity : AppCompatActivity() {
                 }
             )
         }
+    }
+
+    private fun showRenameDialog(entry: WhitelistEntry) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 0)
+        }
+        val input = EditText(this).apply {
+            hint = "Display name"
+            setText(entry.name)
+        }
+        layout.addView(input)
+
+        AlertDialog.Builder(this)
+            .setTitle("Rename")
+            .setView(layout)
+            .setPositiveButton("Save") { _, _ ->
+                val newName = input.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    WhitelistManager.updateEntryName(this, entry.url, newName)
+                    refreshHomeList()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showBlockedDialog(url: String) {
@@ -191,13 +219,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private class HomeAdapter(
-        private var items: MutableList<String>,
-        private val onClick: (String) -> Unit,
-        private val onDelete: (String) -> Unit
+        private var items: MutableList<WhitelistEntry>,
+        private val onClick: (WhitelistEntry) -> Unit,
+        private val onRename: (WhitelistEntry) -> Unit,
+        private val onDelete: (WhitelistEntry) -> Unit
     ) : RecyclerView.Adapter<HomeAdapter.ViewHolder>() {
 
         class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val textView: TextView = view.findViewById(android.R.id.text1)
+            val editButton: ImageButton = view.findViewById(android.R.id.edit)
             val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
         }
 
@@ -211,30 +241,34 @@ class MainActivity : AppCompatActivity() {
                 setPadding(48, 24, 48, 24)
                 gravity = android.view.Gravity.CENTER_VERTICAL
             }
-
             val text = TextView(parent.context).apply {
                 id = android.R.id.text1
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 textSize = 16f
             }
-
-            val button = ImageButton(parent.context).apply {
+            val editBtn = ImageButton(parent.context).apply {
+                id = android.R.id.edit
+                setImageResource(android.R.drawable.ic_menu_edit)
+                setBackgroundResource(android.R.color.transparent)
+                contentDescription = "Rename"
+            }
+            val deleteBtn = ImageButton(parent.context).apply {
                 id = android.R.id.button1
                 setImageResource(android.R.drawable.ic_delete)
                 setBackgroundResource(android.R.color.transparent)
                 contentDescription = "Delete"
             }
-
             layout.addView(text)
-            layout.addView(button)
-
+            layout.addView(editBtn)
+            layout.addView(deleteBtn)
             return ViewHolder(layout)
         }
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val entry = items[position]
-            holder.textView.text = entry
+            holder.textView.text = entry.name
             holder.itemView.setOnClickListener { onClick(entry) }
+            holder.editButton.setOnClickListener { onRename(entry) }
             holder.deleteButton.setOnClickListener { onDelete(entry) }
         }
 

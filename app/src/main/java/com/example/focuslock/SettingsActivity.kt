@@ -3,7 +3,6 @@ package com.example.focuslock
 import android.os.Bundle
 import android.text.InputFilter
 import android.text.InputType
-import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
@@ -41,14 +40,12 @@ class SettingsActivity : AppCompatActivity() {
             WhitelistManager.getWhitelist(this).toMutableList(),
             onEdit = { entry -> showEditEntryDialog(entry) },
             onDelete = { entry ->
-                WhitelistManager.removeEntry(this, entry)
+                WhitelistManager.removeEntry(this, entry.url)
                 refreshList()
             }
         )
-
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
-
         binding.btnAdd.setOnClickListener { showAddEntryDialog() }
         binding.btnChangePassword.setOnClickListener { showChangePasswordFlow() }
     }
@@ -152,12 +149,14 @@ class SettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 32, 48, 0)
         }
-
-        val input = EditText(this).apply {
-            hint = "e.g. instagram.com or instagram.com/direct/"
+        val urlInput = EditText(this).apply {
+            hint = "URL (e.g. instagram.com or instagram.com/direct/)"
         }
-
-        layout.addView(input)
+        val nameInput = EditText(this).apply {
+            hint = "Display name (optional)"
+        }
+        layout.addView(urlInput)
+        layout.addView(nameInput)
 
         AlertDialog.Builder(this)
             .setTitle("Add Whitelist Entry")
@@ -168,21 +167,22 @@ class SettingsActivity : AppCompatActivity() {
             .apply {
                 setOnShowListener {
                     getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                        val entry = input.text.toString().trim()
+                        val url = urlInput.text.toString().trim()
+                        val name = nameInput.text.toString().trim()
 
-                        if (entry.isEmpty()) {
-                            input.error = "Entry cannot be empty"
+                        if (url.isEmpty()) {
+                            urlInput.error = "URL cannot be empty"
                             return@setOnClickListener
                         }
 
-                        val normalizedInput = WhitelistManager.normalizeUrl(entry)
+                        val normalizedUrl = WhitelistManager.normalizeUrl(url)
                         val existing = WhitelistManager.getWhitelist(this@SettingsActivity)
-                        if (existing.contains(normalizedInput)) {
-                            input.error = "Entry already exists"
+                        if (existing.any { it.url == normalizedUrl }) {
+                            urlInput.error = "URL already exists"
                             return@setOnClickListener
                         }
 
-                        WhitelistManager.addEntry(this@SettingsActivity, entry)
+                        WhitelistManager.addEntry(this@SettingsActivity, url, name)
                         refreshList()
                         dismiss()
                     }
@@ -191,18 +191,21 @@ class SettingsActivity : AppCompatActivity() {
             }
     }
 
-    private fun showEditEntryDialog(oldEntry: String) {
+    private fun showEditEntryDialog(entry: WhitelistEntry) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 32, 48, 0)
         }
-
-        val input = EditText(this).apply {
-            hint = "e.g. instagram.com or instagram.com/direct/"
-            setText(oldEntry)
+        val nameInput = EditText(this).apply {
+            hint = "Display name"
+            setText(entry.name)
         }
-
-        layout.addView(input)
+        val urlInput = EditText(this).apply {
+            hint = "URL"
+            setText(entry.url)
+        }
+        layout.addView(nameInput)
+        layout.addView(urlInput)
 
         AlertDialog.Builder(this)
             .setTitle("Edit Whitelist Entry")
@@ -213,23 +216,24 @@ class SettingsActivity : AppCompatActivity() {
             .apply {
                 setOnShowListener {
                     getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                        val newEntry = input.text.toString().trim()
+                        val newUrl = urlInput.text.toString().trim()
+                        val newName = nameInput.text.toString().trim()
 
-                        if (newEntry.isEmpty()) {
-                            input.error = "Entry cannot be empty"
+                        if (newUrl.isEmpty()) {
+                            urlInput.error = "URL cannot be empty"
                             return@setOnClickListener
                         }
 
-                        val normalizedNew = WhitelistManager.normalizeUrl(newEntry)
-                        if (normalizedNew != oldEntry) {
+                        val normalizedNew = WhitelistManager.normalizeUrl(newUrl)
+                        if (normalizedNew != entry.url) {
                             val existing = WhitelistManager.getWhitelist(this@SettingsActivity)
-                            if (existing.contains(normalizedNew)) {
-                                input.error = "Entry already exists"
+                            if (existing.any { it.url == normalizedNew }) {
+                                urlInput.error = "URL already exists"
                                 return@setOnClickListener
                             }
                         }
 
-                        WhitelistManager.updateEntry(this@SettingsActivity, oldEntry, newEntry)
+                        WhitelistManager.updateEntry(this@SettingsActivity, entry.url, newUrl, newName)
                         refreshList()
                         dismiss()
                     }
@@ -329,13 +333,14 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private class WhitelistAdapter(
-        private var items: MutableList<String>,
-        private val onEdit: (String) -> Unit,
-        private val onDelete: (String) -> Unit
+        private var items: MutableList<WhitelistEntry>,
+        private val onEdit: (WhitelistEntry) -> Unit,
+        private val onDelete: (WhitelistEntry) -> Unit
     ) : RecyclerView.Adapter<WhitelistAdapter.ViewHolder>() {
 
         class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-            val textView: TextView = view.findViewById(android.R.id.text1)
+            val nameView: TextView = view.findViewById(android.R.id.text1)
+            val urlView: TextView = view.findViewById(android.R.id.text2)
             val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
         }
 
@@ -349,38 +354,44 @@ class SettingsActivity : AppCompatActivity() {
                 setPadding(48, 24, 48, 24)
                 gravity = android.view.Gravity.CENTER_VERTICAL
             }
-
-            val text = TextView(parent.context).apply {
-                id = android.R.id.text1
+            val textContainer = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val nameText = TextView(parent.context).apply {
+                id = android.R.id.text1
                 textSize = 16f
             }
-
+            val urlText = TextView(parent.context).apply {
+                id = android.R.id.text2
+                textSize = 12f
+                setTextColor(android.graphics.Color.GRAY)
+            }
+            textContainer.addView(nameText)
+            textContainer.addView(urlText)
             val button = ImageButton(parent.context).apply {
                 id = android.R.id.button1
                 setImageResource(android.R.drawable.ic_delete)
                 setBackgroundResource(android.R.color.transparent)
                 contentDescription = "Delete"
             }
-
-            layout.addView(text)
+            layout.addView(textContainer)
             layout.addView(button)
-
             return ViewHolder(layout)
         }
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val entry = items[position]
-            holder.textView.text = entry
+            holder.nameView.text = entry.name
+            holder.urlView.text = entry.url
             holder.itemView.setOnClickListener { onEdit(entry) }
             holder.deleteButton.setOnClickListener { onDelete(entry) }
         }
 
         override fun getItemCount(): Int = items.size
 
-        fun updateList(newItems: MutableList<String>) {
-            items = newItems
-            @Suppress("NotifyDataSetChanged")
+        fun updateList(newList: MutableList<WhitelistEntry>) {
+            items = newList
             notifyDataSetChanged()
         }
     }
