@@ -36,6 +36,11 @@ class MainActivity : AppCompatActivity() {
                 return if (WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
                     false
                 } else {
+                    android.widget.Toast.makeText(
+                        this@MainActivity,
+                        "Blocked: $url",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                     view?.post { showHome() }
                     true
                 }
@@ -43,13 +48,24 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                url?.let { binding.urlBar.setText(it) }
+                if (url == "about:blank") {
+                    view?.clearHistory()
+                } else {
+                    url?.let { binding.urlBar.setText(it) }
+                }
             }
 
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
-                if (url != null && !WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
-                    view?.post { showHome() }
+                if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+                    if (!WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
+                        android.widget.Toast.makeText(
+                            this@MainActivity,
+                            "Blocked: $url",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        view?.post { showHome() }
+                    }
                 }
             }
         }
@@ -100,8 +116,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHome() {
+        binding.webView.stopLoading()
+        binding.webView.loadUrl("about:blank")
         binding.homeScreen.visibility = View.VISIBLE
         binding.webView.visibility = View.GONE
+        binding.fab.visibility = View.VISIBLE
         binding.urlBar.setText("")
         refreshHomeList()
     }
@@ -109,6 +128,7 @@ class MainActivity : AppCompatActivity() {
     private fun showWebView() {
         binding.homeScreen.visibility = View.GONE
         binding.webView.visibility = View.VISIBLE
+        binding.fab.visibility = View.GONE
     }
 
     private fun refreshHomeList() {
