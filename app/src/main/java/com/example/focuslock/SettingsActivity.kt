@@ -38,11 +38,13 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun initSettings() {
         adapter = WhitelistAdapter(
-            WhitelistManager.getWhitelist(this).toMutableList()
-        ) { entry ->
-            WhitelistManager.removeEntry(this, entry)
-            refreshList()
-        }
+            WhitelistManager.getWhitelist(this).toMutableList(),
+            onEdit = { entry -> showEditEntryDialog(entry) },
+            onDelete = { entry ->
+                WhitelistManager.removeEntry(this, entry)
+                refreshList()
+            }
+        )
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
@@ -146,14 +148,20 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun showAddEntryDialog() {
-        val input = EditText(this).apply {
-            hint = "e.g. google.com or google.com*"
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(48, 32, 48, 0)
         }
 
+        val input = EditText(this).apply {
+            hint = "e.g. google.com or google.com*"
+        }
+
+        layout.addView(input)
+
         AlertDialog.Builder(this)
             .setTitle("Add Whitelist Entry")
-            .setView(input)
+            .setView(layout)
             .setPositiveButton("Add", null)
             .setNegativeButton("Cancel", null)
             .create()
@@ -174,6 +182,52 @@ class SettingsActivity : AppCompatActivity() {
                         }
 
                         WhitelistManager.addEntry(this@SettingsActivity, entry)
+                        refreshList()
+                        dismiss()
+                    }
+                }
+                show()
+            }
+    }
+
+    private fun showEditEntryDialog(oldEntry: String) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 0)
+        }
+
+        val input = EditText(this).apply {
+            hint = "e.g. google.com or google.com*"
+            setText(oldEntry)
+        }
+
+        layout.addView(input)
+
+        AlertDialog.Builder(this)
+            .setTitle("Edit Whitelist Entry")
+            .setView(layout)
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+            .apply {
+                setOnShowListener {
+                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val newEntry = input.text.toString().trim()
+
+                        if (newEntry.isEmpty()) {
+                            input.error = "Entry cannot be empty"
+                            return@setOnClickListener
+                        }
+
+                        if (newEntry != oldEntry) {
+                            val existing = WhitelistManager.getWhitelist(this@SettingsActivity)
+                            if (existing.contains(newEntry)) {
+                                input.error = "Entry already exists"
+                                return@setOnClickListener
+                            }
+                        }
+
+                        WhitelistManager.updateEntry(this@SettingsActivity, oldEntry, newEntry)
                         refreshList()
                         dismiss()
                     }
@@ -274,6 +328,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private class WhitelistAdapter(
         private var items: MutableList<String>,
+        private val onEdit: (String) -> Unit,
         private val onDelete: (String) -> Unit
     ) : RecyclerView.Adapter<WhitelistAdapter.ViewHolder>() {
 
@@ -315,6 +370,7 @@ class SettingsActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val entry = items[position]
             holder.textView.text = entry
+            holder.itemView.setOnClickListener { onEdit(entry) }
             holder.deleteButton.setOnClickListener { onDelete(entry) }
         }
 

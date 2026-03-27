@@ -33,6 +33,15 @@ object WhitelistManager {
         saveWhitelist(context, list)
     }
 
+    fun updateEntry(context: Context, oldEntry: String, newEntry: String) {
+        val list = getWhitelist(context).toMutableList()
+        val index = list.indexOf(oldEntry)
+        if (index != -1) {
+            list[index] = newEntry
+            saveWhitelist(context, list)
+        }
+    }
+
     fun isUrlAllowed(context: Context, url: String): Boolean {
         val normalized = url.removePrefix("https://").removePrefix("http://").removePrefix("www.")
             .split("?")[0]
