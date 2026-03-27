@@ -65,6 +65,20 @@ class SettingsActivity : AppCompatActivity() {
         adapter.updateList(WhitelistManager.getWhitelist(this).toMutableList())
     }
 
+    private fun buildFolderChoices(): List<Pair<String?, String>> {
+        val folders = WhitelistManager.getFolders(this)
+        val result = mutableListOf<Pair<String?, String>>(null to "None (root)")
+        fun addLevel(parentId: String?, indent: Int) {
+            folders.filter { it.parentId == parentId }.forEach { folder ->
+                val prefix = "\u00A0\u00A0".repeat(indent)
+                result.add(folder.id to "$prefix${folder.name}")
+                addLevel(folder.id, indent + 1)
+            }
+        }
+        addLevel(null, 0)
+        return result
+    }
+
     private fun showCreatePasswordDialog() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -196,9 +210,29 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
         }
+
+        var selectedFolderId: String? = null
+        val folderChoices = buildFolderChoices()
+        val folderSelector = TextView(this).apply {
+            hint = "Folder: None (root)"
+            setPadding(0, 24, 0, 24)
+            textSize = 16f
+            setOnClickListener {
+                val names = folderChoices.map { it.second }.toTypedArray()
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("Select Folder")
+                    .setItems(names) { _, which ->
+                        selectedFolderId = folderChoices[which].first
+                        text = "Folder: ${names[which]}"
+                    }
+                    .show()
+            }
+        }
+
         layout.addView(urlInput)
         layout.addView(fetchBtn)
         layout.addView(nameInput)
+        layout.addView(folderSelector)
 
         AlertDialog.Builder(this)
             .setTitle("Add Whitelist Entry")
@@ -224,7 +258,7 @@ class SettingsActivity : AppCompatActivity() {
                             return@setOnClickListener
                         }
 
-                        WhitelistManager.addEntry(this@SettingsActivity, url, name)
+                        WhitelistManager.addEntry(this@SettingsActivity, url, name, selectedFolderId)
                         refreshList()
                         dismiss()
                     }
@@ -276,9 +310,30 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
         }
+
+        var selectedFolderId: String? = entry.folderId
+        val folderChoices = buildFolderChoices()
+        val currentIndex = folderChoices.indexOfFirst { it.first == entry.folderId }.coerceAtLeast(0)
+        val folderSelector = TextView(this).apply {
+            text = "Folder: ${folderChoices[currentIndex].second}"
+            setPadding(0, 24, 0, 24)
+            textSize = 16f
+            setOnClickListener {
+                val names = folderChoices.map { it.second }.toTypedArray()
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("Select Folder")
+                    .setItems(names) { _, which ->
+                        selectedFolderId = folderChoices[which].first
+                        text = "Folder: ${names[which]}"
+                    }
+                    .show()
+            }
+        }
+
         layout.addView(urlInput)
         layout.addView(fetchBtn)
         layout.addView(nameInput)
+        layout.addView(folderSelector)
 
         AlertDialog.Builder(this)
             .setTitle("Edit Whitelist Entry")
@@ -307,6 +362,10 @@ class SettingsActivity : AppCompatActivity() {
                         }
 
                         WhitelistManager.updateEntry(this@SettingsActivity, entry.url, newUrl, newName)
+                        if (selectedFolderId != entry.folderId) {
+                            val urlToMove = WhitelistManager.normalizeUrl(newUrl)
+                            WhitelistManager.moveEntryToFolder(this@SettingsActivity, urlToMove, selectedFolderId)
+                        }
                         refreshList()
                         dismiss()
                     }
@@ -456,7 +515,12 @@ class SettingsActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val entry = items[position]
             holder.nameView.text = entry.name
-            holder.urlView.text = entry.url
+            if (entry.folderId != null) {
+                val folder = WhitelistManager.getFolders(holder.itemView.context).find { it.id == entry.folderId }
+                holder.urlView.text = "${entry.url} \u00B7 ${folder?.name ?: "Unknown folder"}"
+            } else {
+                holder.urlView.text = entry.url
+            }
             holder.itemView.setOnClickListener { onEdit(entry) }
             holder.deleteButton.setOnClickListener { onDelete(entry) }
         }
