@@ -46,10 +46,11 @@ object WhitelistManager {
         val normalized = url.removePrefix("https://").removePrefix("http://").removePrefix("www.")
             .split("?")[0]
             .split("#")[0]
+            .lowercase()
         val whitelist = getWhitelist(context)
 
         for (entry in whitelist) {
-            val normalizedEntry = entry.removePrefix("www.")
+            val normalizedEntry = entry.removePrefix("www.").lowercase()
 
             if (!normalizedEntry.endsWith("*")) {
                 val domain = normalized.split("/")[0]
