@@ -34,12 +34,7 @@ object WhitelistManager {
         result = result.split("?")[0].split("#")[0]
         // Lowercase
         result = result.lowercase()
-        // Remove trailing slash for cleaner storage (but not if there's a path)
-        if (result.endsWith("/") && !result.contains("/", startIndex = 0)) {
-            // Only strip trailing slash for bare domains like "youtube.com/"
-            result = result.removeSuffix("/")
-        }
-        // Actually, let's be more careful: strip trailing slash only if it's the only slash
+        // Strip trailing slash only if it's the only slash
         // e.g. "youtube.com/" → "youtube.com" but "instagram.com/inbox/" stays
         val slashCount = result.count { it == '/' }
         if (slashCount == 1 && result.endsWith("/")) {
