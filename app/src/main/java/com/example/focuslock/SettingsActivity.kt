@@ -155,6 +155,22 @@ class SettingsActivity : AppCompatActivity() {
         val nameInput = EditText(this).apply {
             hint = "Display name (optional)"
         }
+        urlInput.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus && nameInput.text.isNullOrBlank()) {
+                val urlText = urlInput.text.toString().trim()
+                if (urlText.isNotEmpty()) {
+                    nameInput.hint = "Fetching title..."
+                    TitleFetcher.fetch(urlText) { title ->
+                        runOnUiThread {
+                            nameInput.hint = "Display name (optional)"
+                            if (title != null && nameInput.text.isNullOrBlank()) {
+                                nameInput.setText(title)
+                            }
+                        }
+                    }
+                }
+            }
+        }
         layout.addView(urlInput)
         layout.addView(nameInput)
 
@@ -203,6 +219,29 @@ class SettingsActivity : AppCompatActivity() {
         val urlInput = EditText(this).apply {
             hint = "URL"
             setText(entry.url)
+        }
+        urlInput.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                val urlText = urlInput.text.toString().trim()
+                val currentName = nameInput.text.toString().trim()
+                // Only auto-fetch if name is blank or still matches the URL (never been custom-named)
+                if (urlText.isNotEmpty() && (currentName.isBlank() || currentName == entry.url || currentName == urlText)) {
+                    nameInput.hint = "Fetching title..."
+                    TitleFetcher.fetch(urlText) { title ->
+                        runOnUiThread {
+                            nameInput.hint = "Display name"
+                            if (title != null) {
+                                val stillAutoName = nameInput.text.toString().trim().let {
+                                    it.isBlank() || it == entry.url || it == urlText
+                                }
+                                if (stillAutoName) {
+                                    nameInput.setText(title)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         layout.addView(nameInput)
         layout.addView(urlInput)
