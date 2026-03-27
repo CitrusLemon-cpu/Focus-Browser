@@ -152,7 +152,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateDesktopModeIcon() {
         if (desktopMode) {
-            val color = com.google.android.material.R.attr.colorPrimary
+            val color = android.R.attr.colorPrimary
             val typedValue = android.util.TypedValue()
             theme.resolveAttribute(color, typedValue, true)
             val colorInt = typedValue.data
