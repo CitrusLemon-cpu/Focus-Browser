@@ -3,12 +3,13 @@ package com.example.focuslock
 import android.content.Context
 import org.json.JSONArray
 
-data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null)
+data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null, val sortOrder: Int = 0)
 
 data class Folder(
     val id: String,
     val name: String,
-    val parentId: String?
+    val parentId: String?,
+    val sortOrder: Int = 0
 )
 
 object WhitelistManager {
@@ -28,7 +29,8 @@ object WhitelistManager {
                 list.add(WhitelistEntry(
                     url = element.getString("url"),
                     name = element.optString("name", element.getString("url")),
-                    folderId = element.optString("folderId", null).takeIf { it?.isNotEmpty() == true }
+                    folderId = element.optString("folderId", null).takeIf { it?.isNotEmpty() == true },
+                    sortOrder = element.optInt("sortOrder", 0)
                 ))
             } else {
                 val raw = element.toString()
@@ -65,7 +67,8 @@ object WhitelistManager {
         val list = getWhitelist(context).toMutableList()
         if (list.none { it.url == normalizedUrl }) {
             val displayName = if (name.isBlank()) normalizedUrl else name.trim()
-            list.add(WhitelistEntry(url = normalizedUrl, name = displayName, folderId = folderId))
+            val maxOrder = list.filter { it.folderId == folderId }.maxOfOrNull { it.sortOrder } ?: -1
+            list.add(WhitelistEntry(url = normalizedUrl, name = displayName, folderId = folderId, sortOrder = maxOrder + 1))
             saveWhitelist(context, list)
         }
     }
@@ -82,7 +85,7 @@ object WhitelistManager {
         val index = list.indexOfFirst { it.url == oldUrl }
         if (index != -1) {
             val displayName = if (newName.isBlank()) normalizedNew else newName.trim()
-            list[index] = WhitelistEntry(url = normalizedNew, name = displayName, folderId = list[index].folderId)
+            list[index] = list[index].copy(url = normalizedNew, name = displayName)
             saveWhitelist(context, list)
         }
     }
@@ -92,7 +95,7 @@ object WhitelistManager {
         val index = list.indexOfFirst { it.url == url }
         if (index != -1) {
             val displayName = if (newName.isBlank()) url else newName.trim()
-            list[index] = WhitelistEntry(url = url, name = displayName, folderId = list[index].folderId)
+            list[index] = list[index].copy(name = displayName)
             saveWhitelist(context, list)
         }
     }
@@ -128,29 +131,32 @@ object WhitelistManager {
             list.add(Folder(
                 id = obj.getString("id"),
                 name = obj.getString("name"),
-                parentId = obj.optString("parentId", null).takeIf { it?.isNotEmpty() == true }
+                parentId = obj.optString("parentId", null).takeIf { it?.isNotEmpty() == true },
+                sortOrder = obj.optInt("sortOrder", 0)
             ))
         }
         return list
     }
 
     fun getSubfolders(context: Context, parentId: String?): List<Folder> {
-        return getFolders(context).filter { it.parentId == parentId }
+        return getFolders(context).filter { it.parentId == parentId }.sortedBy { it.sortOrder }
     }
 
     fun getEntriesInFolder(context: Context, folderId: String?): List<WhitelistEntry> {
-        return getWhitelist(context).filter { it.folderId == folderId }
+        return getWhitelist(context).filter { it.folderId == folderId }.sortedBy { it.sortOrder }
     }
 
     fun createFolder(context: Context, name: String, parentId: String?): Folder {
+        val allFolders = getFolders(context).toMutableList()
+        val maxOrder = allFolders.filter { it.parentId == parentId }.maxOfOrNull { it.sortOrder } ?: -1
         val folder = Folder(
             id = java.util.UUID.randomUUID().toString(),
             name = name.trim(),
-            parentId = parentId
+            parentId = parentId,
+            sortOrder = maxOrder + 1
         )
-        val list = getFolders(context).toMutableList()
-        list.add(folder)
-        saveFolders(context, list)
+        allFolders.add(folder)
+        saveFolders(context, allFolders)
         return folder
     }
 
@@ -186,9 +192,42 @@ object WhitelistManager {
         val list = getWhitelist(context).toMutableList()
         val index = list.indexOfFirst { it.url == url }
         if (index != -1) {
-            list[index] = WhitelistEntry(url = list[index].url, name = list[index].name, folderId = folderId)
+            val maxOrder = list.filter { it.folderId == folderId }.maxOfOrNull { it.sortOrder } ?: -1
+            list[index] = list[index].copy(folderId = folderId, sortOrder = maxOrder + 1)
             saveWhitelist(context, list)
         }
+    }
+
+    fun moveFolderToParent(context: Context, folderId: String, newParentId: String?) {
+        val list = getFolders(context).toMutableList()
+        val index = list.indexOfFirst { it.id == folderId }
+        if (index != -1) {
+            val maxOrder = list.filter { it.parentId == newParentId }.maxOfOrNull { it.sortOrder } ?: -1
+            list[index] = list[index].copy(parentId = newParentId, sortOrder = maxOrder + 1)
+            saveFolders(context, list)
+        }
+    }
+
+    fun reorderEntries(context: Context, folderId: String?, orderedUrls: List<String>) {
+        val list = getWhitelist(context).toMutableList()
+        for ((index, url) in orderedUrls.withIndex()) {
+            val i = list.indexOfFirst { it.url == url }
+            if (i != -1) {
+                list[i] = list[i].copy(sortOrder = index)
+            }
+        }
+        saveWhitelist(context, list)
+    }
+
+    fun reorderFolders(context: Context, parentId: String?, orderedIds: List<String>) {
+        val list = getFolders(context).toMutableList()
+        for ((index, id) in orderedIds.withIndex()) {
+            val i = list.indexOfFirst { it.id == id }
+            if (i != -1) {
+                list[i] = list[i].copy(sortOrder = index)
+            }
+        }
+        saveFolders(context, list)
     }
 
     private fun saveWhitelist(context: Context, list: List<WhitelistEntry>) {
@@ -198,6 +237,7 @@ object WhitelistManager {
             obj.put("url", entry.url)
             obj.put("name", entry.name)
             if (entry.folderId != null) obj.put("folderId", entry.folderId)
+            obj.put("sortOrder", entry.sortOrder)
             array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -213,6 +253,7 @@ object WhitelistManager {
             obj.put("id", folder.id)
             obj.put("name", folder.name)
             if (folder.parentId != null) obj.put("parentId", folder.parentId)
+            obj.put("sortOrder", folder.sortOrder)
             array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

@@ -28,9 +28,6 @@ public final class ActivityMainBinding implements ViewBinding {
   public final ImageButton btnDesktopMode;
 
   @NonNull
-  public final ImageButton btnFolderBack;
-
-  @NonNull
   public final ImageButton btnHome;
 
   @NonNull
@@ -41,12 +38,6 @@ public final class ActivityMainBinding implements ViewBinding {
 
   @NonNull
   public final FloatingActionButton fabNewFolder;
-
-  @NonNull
-  public final LinearLayout folderHeader;
-
-  @NonNull
-  public final TextView folderTitle;
 
   @NonNull
   public final RecyclerView homeList;
@@ -61,20 +52,16 @@ public final class ActivityMainBinding implements ViewBinding {
   public final WebView webView;
 
   private ActivityMainBinding(@NonNull LinearLayout rootView, @NonNull ImageButton btnDesktopMode,
-      @NonNull ImageButton btnFolderBack, @NonNull ImageButton btnHome,
-      @NonNull TextView emptyMessage, @NonNull FloatingActionButton fab,
-      @NonNull FloatingActionButton fabNewFolder, @NonNull LinearLayout folderHeader,
-      @NonNull TextView folderTitle, @NonNull RecyclerView homeList,
-      @NonNull LinearLayout homeScreen, @NonNull EditText urlBar, @NonNull WebView webView) {
+      @NonNull ImageButton btnHome, @NonNull TextView emptyMessage,
+      @NonNull FloatingActionButton fab, @NonNull FloatingActionButton fabNewFolder,
+      @NonNull RecyclerView homeList, @NonNull LinearLayout homeScreen, @NonNull EditText urlBar,
+      @NonNull WebView webView) {
     this.rootView = rootView;
     this.btnDesktopMode = btnDesktopMode;
-    this.btnFolderBack = btnFolderBack;
     this.btnHome = btnHome;
     this.emptyMessage = emptyMessage;
     this.fab = fab;
     this.fabNewFolder = fabNewFolder;
-    this.folderHeader = folderHeader;
-    this.folderTitle = folderTitle;
     this.homeList = homeList;
     this.homeScreen = homeScreen;
     this.urlBar = urlBar;
@@ -114,12 +101,6 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      id = R.id.btnFolderBack;
-      ImageButton btnFolderBack = ViewBindings.findChildViewById(rootView, id);
-      if (btnFolderBack == null) {
-        break missingId;
-      }
-
       id = R.id.btnHome;
       ImageButton btnHome = ViewBindings.findChildViewById(rootView, id);
       if (btnHome == null) {
@@ -141,18 +122,6 @@ public final class ActivityMainBinding implements ViewBinding {
       id = R.id.fabNewFolder;
       FloatingActionButton fabNewFolder = ViewBindings.findChildViewById(rootView, id);
       if (fabNewFolder == null) {
-        break missingId;
-      }
-
-      id = R.id.folderHeader;
-      LinearLayout folderHeader = ViewBindings.findChildViewById(rootView, id);
-      if (folderHeader == null) {
-        break missingId;
-      }
-
-      id = R.id.folderTitle;
-      TextView folderTitle = ViewBindings.findChildViewById(rootView, id);
-      if (folderTitle == null) {
         break missingId;
       }
 
@@ -180,9 +149,8 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      return new ActivityMainBinding((LinearLayout) rootView, btnDesktopMode, btnFolderBack,
-          btnHome, emptyMessage, fab, fabNewFolder, folderHeader, folderTitle, homeList, homeScreen,
-          urlBar, webView);
+      return new ActivityMainBinding((LinearLayout) rootView, btnDesktopMode, btnHome, emptyMessage,
+          fab, fabNewFolder, homeList, homeScreen, urlBar, webView);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));
