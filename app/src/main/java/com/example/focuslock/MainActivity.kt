@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
         binding.webView.settings.allowFileAccess = true
         binding.webView.settings.allowContentAccess = true
         binding.webView.settings.setGeolocationEnabled(false)
-        binding.webView.settings.databaseEnabled = false
+        binding.webView.settings.databaseEnabled = true
 
         val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
         desktopMode = prefs.getBoolean("desktop_mode", false)
@@ -133,6 +133,12 @@ class MainActivity : AppCompatActivity() {
                         view?.post {
                             showHome()
                             showBlockedDialog(url)
+                        }
+                    } else if (youtubeEmbedMode) {
+                        val videoId = extractYouTubeVideoId(url)
+                        if (videoId != null) {
+                            val embedUrl = "https://www.youtube.com/embed/$videoId?rel=0&autoplay=1"
+                            view?.post { view.loadUrl(embedUrl) }
                         }
                     }
                 }
