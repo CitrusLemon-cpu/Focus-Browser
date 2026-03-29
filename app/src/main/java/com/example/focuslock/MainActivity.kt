@@ -23,6 +23,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.focuslock.databinding.ActivityMainBinding
@@ -31,8 +32,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var desktopMode = false
-    private var currentFolderId: String? = null
-    private var folderStack: MutableList<String?> = mutableListOf()
+    private val expandedFolderIds = mutableSetOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -143,11 +143,6 @@ class MainActivity : AppCompatActivity() {
         binding.fabNewFolder.setOnClickListener {
             showCreateFolderDialog()
         }
-
-        binding.btnFolderBack.setOnClickListener {
-            currentFolderId = folderStack.removeLastOrNull()
-            refreshHomeList()
-        }
     }
 
     private fun applyDesktopMode() {
@@ -214,8 +209,6 @@ class MainActivity : AppCompatActivity() {
         binding.fab.visibility = View.VISIBLE
         binding.fabNewFolder.visibility = View.VISIBLE
         binding.urlBar.setText("")
-        currentFolderId = null
-        folderStack.clear()
         refreshHomeList()
     }
 
@@ -226,49 +219,53 @@ class MainActivity : AppCompatActivity() {
         binding.fabNewFolder.visibility = View.GONE
     }
 
-    private fun refreshHomeList() {
-        if (currentFolderId != null) {
-            val folder = WhitelistManager.getFolders(this).find { it.id == currentFolderId }
-            binding.folderHeader.visibility = View.VISIBLE
-            binding.folderTitle.text = folder?.name ?: "Unknown"
-        } else {
-            binding.folderHeader.visibility = View.GONE
-        }
-
-        val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
-        val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
-
+    private fun buildItemList(): List<HomeItem> {
         val items = mutableListOf<HomeItem>()
-        subfolders.forEach { items.add(HomeItem.FolderItem(it)) }
-        entries.forEach { items.add(HomeItem.EntryItem(it)) }
+        fun addChildren(parentFolderId: String?, depth: Int) {
+            val subfolders = WhitelistManager.getSubfolders(this, parentFolderId)
+            for (folder in subfolders) {
+                val isExpanded = folder.id in expandedFolderIds
+                items.add(HomeItem.FolderItem(folder, depth, isExpanded))
+                if (isExpanded) {
+                    addChildren(folder.id, depth + 1)
+                }
+            }
+            val entries = WhitelistManager.getEntriesInFolder(this, parentFolderId)
+            for (entry in entries) {
+                items.add(HomeItem.EntryItem(entry, depth))
+            }
+        }
+        addChildren(null, 0)
+        return items
+    }
 
+    private fun refreshHomeList() {
+        val items = buildItemList()
         if (items.isEmpty()) {
             binding.homeList.visibility = View.GONE
             binding.emptyMessage.visibility = View.VISIBLE
-            if (currentFolderId != null) {
-                binding.emptyMessage.text = "This folder is empty"
-            } else {
-                binding.emptyMessage.text = "No sites added yet.\nTap the \u2699 button to add sites in Settings."
-            }
+            binding.emptyMessage.text = "No sites added yet.\nTap the \u2699 button to add sites in Settings."
         } else {
             binding.homeList.visibility = View.VISIBLE
             binding.emptyMessage.visibility = View.GONE
-            binding.homeList.layoutManager = LinearLayoutManager(this)
-            binding.homeList.adapter = HomeAdapter(
+            if (binding.homeList.layoutManager == null) {
+                binding.homeList.layoutManager = LinearLayoutManager(this)
+            }
+            val adapter = HomeAdapter(
                 items,
                 onFolderClick = { folder ->
-                    folderStack.add(currentFolderId)
-                    currentFolderId = folder.id
+                    if (folder.id in expandedFolderIds) {
+                        expandedFolderIds.remove(folder.id)
+                    } else {
+                        expandedFolderIds.add(folder.id)
+                    }
                     refreshHomeList()
                 },
                 onFolderRename = { folder -> showRenameFolderDialog(folder) },
                 onFolderDelete = { folder -> showDeleteFolderDialog(folder) },
                 onEntryClick = { entry ->
-                    val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
-                        entry.url
-                    } else {
-                        "https://${entry.url}"
-                    }
+                    val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) entry.url
+                    else "https://${entry.url}"
                     showWebView()
                     binding.webView.loadUrl(url)
                 },
@@ -285,6 +282,119 @@ class MainActivity : AppCompatActivity() {
                         .show()
                 }
             )
+            binding.homeList.adapter = adapter
+            setupDragDrop(adapter)
+        }
+    }
+
+    private fun setupDragDrop(adapter: HomeAdapter) {
+        val activity = this
+        val callback = object : ItemTouchHelper.Callback() {
+
+            override fun getMovementFlags(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder
+            ): Int {
+                val dragFlags = ItemTouchHelper.UP or ItemTouchHelper.DOWN
+                return makeMovementFlags(dragFlags, 0)
+            }
+
+            override fun isLongPressDragEnabled() = true
+
+            override fun onMove(
+                recyclerView: RecyclerView,
+                source: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                val fromPos = source.adapterPosition
+                val toPos = target.adapterPosition
+                if (fromPos == RecyclerView.NO_POSITION || toPos == RecyclerView.NO_POSITION) return false
+                adapter.moveItem(fromPos, toPos)
+                return true
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+            override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                super.onSelectedChanged(viewHolder, actionState)
+                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
+                    val pos = viewHolder.adapterPosition
+                    if (pos != RecyclerView.NO_POSITION) {
+                        adapter.setDragStartItem(adapter.getItems().getOrNull(pos))
+                    }
+                    viewHolder.itemView.alpha = 0.7f
+                    viewHolder.itemView.elevation = 8f
+                }
+            }
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                viewHolder.itemView.alpha = 1.0f
+                viewHolder.itemView.elevation = 0f
+
+                val pos = viewHolder.adapterPosition
+                if (pos == RecyclerView.NO_POSITION) return
+
+                val items = adapter.getItems()
+                val draggedItem = adapter.getDraggedItem() ?: return
+                val targetItem = items.getOrNull(pos)
+
+                if (targetItem is HomeItem.FolderItem && draggedItem != targetItem) {
+                    when (draggedItem) {
+                        is HomeItem.EntryItem -> {
+                            WhitelistManager.moveEntryToFolder(activity, draggedItem.entry.url, targetItem.folder.id)
+                            expandedFolderIds.add(targetItem.folder.id)
+                        }
+                        is HomeItem.FolderItem -> {
+                            if (!isDescendant(draggedItem.folder.id, targetItem.folder.id)) {
+                                WhitelistManager.moveFolderToParent(activity, draggedItem.folder.id, targetItem.folder.id)
+                                expandedFolderIds.add(targetItem.folder.id)
+                            }
+                        }
+                    }
+                } else {
+                    persistCurrentOrder(adapter)
+                }
+
+                adapter.setDragStartItem(null)
+                refreshHomeList()
+            }
+        }
+
+        val touchHelper = ItemTouchHelper(callback)
+        touchHelper.attachToRecyclerView(binding.homeList)
+    }
+
+    private fun isDescendant(folderId: String, potentialParentId: String): Boolean {
+        if (folderId == potentialParentId) return true
+        val folders = WhitelistManager.getFolders(this)
+        fun check(currentId: String): Boolean {
+            return folders.filter { it.parentId == currentId }.any { it.id == potentialParentId || check(it.id) }
+        }
+        return check(folderId)
+    }
+
+    private fun persistCurrentOrder(adapter: HomeAdapter) {
+        val items = adapter.getItems()
+        val foldersByParent = mutableMapOf<String?, MutableList<String>>()
+        val entriesByFolder = mutableMapOf<String?, MutableList<String>>()
+
+        for (item in items) {
+            when (item) {
+                is HomeItem.FolderItem -> {
+                    foldersByParent.getOrPut(item.folder.parentId) { mutableListOf() }.add(item.folder.id)
+                }
+                is HomeItem.EntryItem -> {
+                    entriesByFolder.getOrPut(item.entry.folderId) { mutableListOf() }.add(item.entry.url)
+                }
+            }
+        }
+
+        for ((parentId, ids) in foldersByParent) {
+            WhitelistManager.reorderFolders(this, parentId, ids)
+        }
+        for ((folderId, urls) in entriesByFolder) {
+            WhitelistManager.reorderEntries(this, folderId, urls)
         }
     }
 
@@ -304,7 +414,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Create") { _, _ ->
                 val name = input.text.toString().trim()
                 if (name.isNotEmpty()) {
-                    WhitelistManager.createFolder(this, name, currentFolderId)
+                    WhitelistManager.createFolder(this, name, null)
                     refreshHomeList()
                 }
             }
@@ -355,6 +465,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Delete Folder")
             .setMessage(message)
             .setPositiveButton("Delete") { _, _ ->
+                expandedFolderIds.remove(folder.id)
                 WhitelistManager.deleteFolder(this, folder.id)
                 refreshHomeList()
             }
@@ -409,21 +520,18 @@ class MainActivity : AppCompatActivity() {
             } else {
                 showHome()
             }
-        } else if (currentFolderId != null) {
-            currentFolderId = folderStack.removeLastOrNull()
-            refreshHomeList()
         } else {
             super.onBackPressed()
         }
     }
 
     private sealed class HomeItem {
-        data class FolderItem(val folder: Folder) : HomeItem()
-        data class EntryItem(val entry: WhitelistEntry) : HomeItem()
+        data class FolderItem(val folder: Folder, val depth: Int, val isExpanded: Boolean) : HomeItem()
+        data class EntryItem(val entry: WhitelistEntry, val depth: Int) : HomeItem()
     }
 
     private class HomeAdapter(
-        private val items: List<HomeItem>,
+        items: List<HomeItem>,
         private val onFolderClick: (Folder) -> Unit,
         private val onFolderRename: (Folder) -> Unit,
         private val onFolderDelete: (Folder) -> Unit,
@@ -432,12 +540,27 @@ class MainActivity : AppCompatActivity() {
         private val onEntryDelete: (WhitelistEntry) -> Unit
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
+        private val currentItems: MutableList<HomeItem> = items.toMutableList()
+        private var dragStartItem: HomeItem? = null
+
+        fun getItems(): List<HomeItem> = currentItems.toList()
+        fun getDraggedItem(): HomeItem? = dragStartItem
+        fun setDragStartItem(item: HomeItem?) { dragStartItem = item }
+
+        fun moveItem(fromPos: Int, toPos: Int) {
+            if (fromPos < 0 || toPos < 0 || fromPos >= currentItems.size || toPos >= currentItems.size) return
+            val item = currentItems.removeAt(fromPos)
+            currentItems.add(toPos, item)
+            notifyItemMoved(fromPos, toPos)
+        }
+
         companion object {
             private const val VIEW_TYPE_FOLDER = 0
             private const val VIEW_TYPE_ENTRY = 1
         }
 
         class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val chevronView: TextView = view.findViewById(android.R.id.toggle)
             val iconView: ImageView = view.findViewById(android.R.id.icon)
             val textView: TextView = view.findViewById(android.R.id.text1)
             val editButton: ImageButton = view.findViewById(android.R.id.edit)
@@ -451,7 +574,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun getItemViewType(position: Int): Int {
-            return when (items[position]) {
+            return when (currentItems[position]) {
                 is HomeItem.FolderItem -> VIEW_TYPE_FOLDER
                 is HomeItem.EntryItem -> VIEW_TYPE_ENTRY
             }
@@ -468,6 +591,12 @@ class MainActivity : AppCompatActivity() {
                         )
                         setPadding(48, 24, 48, 24)
                         gravity = android.view.Gravity.CENTER_VERTICAL
+                    }
+                    val chevron = TextView(parent.context).apply {
+                        id = android.R.id.toggle
+                        textSize = 14f
+                        val size = (24 * parent.context.resources.displayMetrics.density).toInt()
+                        layoutParams = LinearLayout.LayoutParams(size, LinearLayout.LayoutParams.WRAP_CONTENT)
                     }
                     val icon = ImageView(parent.context).apply {
                         id = android.R.id.icon
@@ -495,6 +624,7 @@ class MainActivity : AppCompatActivity() {
                         setBackgroundResource(android.R.color.transparent)
                         contentDescription = "Delete"
                     }
+                    layout.addView(chevron)
                     layout.addView(icon)
                     layout.addView(text)
                     layout.addView(editBtn)
@@ -537,9 +667,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            when (val item = items[position]) {
+            when (val item = currentItems[position]) {
                 is HomeItem.FolderItem -> {
                     val vh = holder as FolderViewHolder
+                    val density = vh.itemView.context.resources.displayMetrics.density
+                    val indentPx = (item.depth * 32 * density).toInt()
+                    vh.itemView.setPadding(48 + indentPx, 24, 48, 24)
+                    vh.chevronView.text = if (item.isExpanded) "\u25BC" else "\u25B6"
                     vh.textView.text = item.folder.name
                     vh.itemView.setOnClickListener { onFolderClick(item.folder) }
                     vh.editButton.setOnClickListener { onFolderRename(item.folder) }
@@ -547,6 +681,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 is HomeItem.EntryItem -> {
                     val vh = holder as EntryViewHolder
+                    val density = vh.itemView.context.resources.displayMetrics.density
+                    val indentPx = (item.depth * 32 * density).toInt()
+                    vh.itemView.setPadding(48 + indentPx, 24, 48, 24)
                     vh.textView.text = item.entry.name
                     vh.itemView.setOnClickListener { onEntryClick(item.entry) }
                     vh.editButton.setOnClickListener { onEntryRename(item.entry) }
@@ -555,6 +692,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        override fun getItemCount(): Int = items.size
+        override fun getItemCount(): Int = currentItems.size
     }
 }

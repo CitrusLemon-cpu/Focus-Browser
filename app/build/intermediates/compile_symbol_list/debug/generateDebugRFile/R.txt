@@ -7,13 +7,10 @@ int id btnAdd 0x0
 int id btnChangePassword 0x0
 int id btnClearData 0x0
 int id btnDesktopMode 0x0
-int id btnFolderBack 0x0
 int id btnHome 0x0
 int id emptyMessage 0x0
 int id fab 0x0
 int id fabNewFolder 0x0
-int id folderHeader 0x0
-int id folderTitle 0x0
 int id homeList 0x0
 int id homeScreen 0x0
 int id recyclerView 0x0

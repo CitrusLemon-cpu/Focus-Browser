@@ -9,13 +9,10 @@ id btnAdd
 id btnChangePassword
 id btnClearData
 id btnDesktopMode
-id btnFolderBack
 id btnHome
 id emptyMessage
 id fab
 id fabNewFolder
-id folderHeader
-id folderTitle
 id homeList
 id homeScreen
 id recyclerView
