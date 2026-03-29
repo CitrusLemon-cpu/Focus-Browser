@@ -37,7 +37,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var desktopMode = false
-    private var youtubeEmbedMode = false
+    private var youtubeFocusMode = false
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private val expandedFolderIds = mutableSetOf<String>()
@@ -80,7 +80,7 @@ class MainActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
         desktopMode = prefs.getBoolean("desktop_mode", false)
-        youtubeEmbedMode = prefs.getBoolean("youtube_embed_mode", false)
+        youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
         applyDesktopMode()
 
         binding.webView.webViewClient = object : WebViewClient() {
@@ -95,20 +95,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val urlString = url.toString()
-                val urlToCheck = convertYouTubeEmbedToWatchUrl(urlString) ?: urlString
-                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
-                    if (youtubeEmbedMode) {
-                        val videoId = extractYouTubeVideoId(urlString)
-                        if (videoId != null) {
-                            val embedUrl = "https://www.youtube.com/embed/$videoId?rel=0&autoplay=1"
-                            view?.post { view.loadUrl(embedUrl) }
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
+                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlString)) {
+                    false
                 } else {
                     view?.post {
                         showHome()
@@ -125,18 +113,24 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     url?.let { binding.urlBar.setText(it) }
                 }
+
+                if (youtubeFocusMode && url != null && isYouTubeWatchPage(url)) {
+                    injectYouTubeFocusCss(view)
+                }
             }
 
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
                 if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-                    val urlToCheck = convertYouTubeEmbedToWatchUrl(url) ?: url
-                    if (!WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
+                    if (!WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
                         view?.post {
                             showHome()
                             showBlockedDialog(url)
                         }
                     }
+                }
+                if (youtubeFocusMode && url != null && isYouTubeWatchPage(url)) {
+                    view?.post { injectYouTubeFocusCss(view) }
                 }
             }
         }
@@ -262,7 +256,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
-        youtubeEmbedMode = prefs.getBoolean("youtube_embed_mode", false)
+        youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
         if (binding.homeScreen.visibility == View.VISIBLE) {
             refreshHomeList()
         }
@@ -617,32 +611,43 @@ class MainActivity : AppCompatActivity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
     }
 
-    private fun convertYouTubeEmbedToWatchUrl(url: String): String? {
-        if (!youtubeEmbedMode) return null
-        val uri = android.net.Uri.parse(url)
-        val host = uri.host?.lowercase() ?: return null
-        if (host != "youtube.com" && host != "www.youtube.com") return null
-        val path = uri.path ?: return null
-        if (!path.startsWith("/embed/")) return null
-        val videoId = path.removePrefix("/embed/").takeWhile { it != '/' && it != '?' }
-        if (videoId.isEmpty()) return null
-        return "https://www.youtube.com/watch?v=$videoId"
+    private fun isYouTubeWatchPage(url: String): Boolean {
+        val lower = url.lowercase()
+        return (lower.contains("youtube.com/watch") || lower.contains("youtu.be/"))
     }
 
-    private fun extractYouTubeVideoId(url: String): String? {
-        val uri = Uri.parse(url)
-        val host = uri.host?.lowercase() ?: return null
-        if (host == "youtu.be" || host == "www.youtu.be") {
-            val path = uri.path ?: return null
-            val videoId = path.trimStart('/')
-            return videoId.ifEmpty { null }
-        }
-        if (host == "youtube.com" || host == "www.youtube.com" || host == "m.youtube.com") {
-            if (uri.path == "/watch") {
-                return uri.getQueryParameter("v")
+    private fun injectYouTubeFocusCss(view: WebView?) {
+        val css = """
+            /* Hide recommended/related videos sidebar */
+            #related,
+            #secondary,
+            #secondary-inner,
+            ytd-watch-next-secondary-results-renderer,
+            /* Hide comments section */
+            #comments,
+            ytd-comments,
+            /* Hide end screen recommendations */
+            .ytp-endscreen-content,
+            .ytp-ce-element,
+            /* Hide "Up next" autoplay section */
+            .ytp-suggestion-set,
+            /* Hide chips/filter bar above recommendations */
+            #chip-bar,
+            ytd-feed-filter-chip-bar-renderer {
+                display: none !important;
             }
-        }
-        return null
+        """.trimIndent().replace("\n", " ").replace("\"", "\\\"")
+
+        val js = "(function() { " +
+            "var style = document.createElement('style'); " +
+            "style.id = 'yt-focus-mode'; " +
+            "style.textContent = \"$css\"; " +
+            "if (!document.getElementById('yt-focus-mode')) { " +
+            "document.head.appendChild(style); " +
+            "}" +
+            "})()"
+
+        view?.evaluateJavascript(js, null)
     }
 
     @Suppress("DEPRECATION")
