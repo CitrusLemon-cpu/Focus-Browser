@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -32,6 +33,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var desktopMode = false
+    private var youtubeEmbedMode = false
+    private var fullscreenView: View? = null
+    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private val expandedFolderIds = mutableSetOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,6 +55,7 @@ class MainActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
         desktopMode = prefs.getBoolean("desktop_mode", false)
+        youtubeEmbedMode = prefs.getBoolean("youtube_embed_mode", false)
         applyDesktopMode()
 
         binding.webView.webViewClient = object : WebViewClient() {
@@ -66,7 +71,18 @@ class MainActivity : AppCompatActivity() {
 
                 val urlString = url.toString()
                 return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlString)) {
-                    false
+                    if (youtubeEmbedMode) {
+                        val videoId = extractYouTubeVideoId(urlString)
+                        if (videoId != null) {
+                            val embedUrl = "https://www.youtube.com/embed/$videoId?rel=0&autoplay=1"
+                            view?.post { view.loadUrl(embedUrl) }
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
                 } else {
                     view?.post {
                         showHome()
@@ -105,6 +121,29 @@ class MainActivity : AppCompatActivity() {
 
             override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
                 callback?.invoke(origin, false, false)
+            }
+
+            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                if (fullscreenView != null) {
+                    callback?.onCustomViewHidden()
+                    return
+                }
+                fullscreenView = view
+                fullscreenCallback = callback
+
+                binding.fullscreenContainer.addView(view)
+                binding.fullscreenContainer.visibility = View.VISIBLE
+
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                )
+            }
+
+            override fun onHideCustomView() {
+                exitFullscreen()
             }
         }
 
@@ -171,6 +210,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+        youtubeEmbedMode = prefs.getBoolean("youtube_embed_mode", false)
         if (binding.homeScreen.visibility == View.VISIBLE) {
             refreshHomeList()
         }
@@ -512,8 +553,41 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun exitFullscreen() {
+        fullscreenView?.let {
+            binding.fullscreenContainer.removeView(it)
+        }
+        binding.fullscreenContainer.visibility = View.GONE
+        fullscreenView = null
+        fullscreenCallback?.onCustomViewHidden()
+        fullscreenCallback = null
+
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+    }
+
+    private fun extractYouTubeVideoId(url: String): String? {
+        val uri = Uri.parse(url)
+        val host = uri.host?.lowercase() ?: return null
+        if (host == "youtu.be" || host == "www.youtu.be") {
+            val path = uri.path ?: return null
+            val videoId = path.trimStart('/')
+            return videoId.ifEmpty { null }
+        }
+        if (host == "youtube.com" || host == "www.youtube.com" || host == "m.youtube.com") {
+            if (uri.path == "/watch") {
+                return uri.getQueryParameter("v")
+            }
+        }
+        return null
+    }
+
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        if (fullscreenView != null) {
+            exitFullscreen()
+            return
+        }
         if (binding.webView.visibility == View.VISIBLE) {
             if (binding.webView.canGoBack()) {
                 binding.webView.goBack()
