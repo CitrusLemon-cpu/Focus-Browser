@@ -1,5 +1,6 @@
 package com.example.focuslock
 
+import android.content.Context
 import android.os.Bundle
 import android.text.InputFilter
 import android.text.InputType
@@ -41,6 +42,13 @@ class SettingsActivity : AppCompatActivity() {
         refreshList()
         binding.btnAdd.setOnClickListener { showAddEntryDialog() }
         binding.btnChangePassword.setOnClickListener { showChangePasswordFlow() }
+
+        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+        binding.switchYoutubeEmbed.isChecked = prefs.getBoolean("youtube_embed_mode", false)
+        binding.switchYoutubeEmbed.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("youtube_embed_mode", isChecked).apply()
+        }
+
         binding.btnClearData.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle("Clear Browsing Data")
