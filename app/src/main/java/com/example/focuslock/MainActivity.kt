@@ -95,7 +95,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val urlString = url.toString()
-                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlString)) {
+                val urlToCheck = convertYouTubeEmbedToWatchUrl(urlString) ?: urlString
+                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
                     if (youtubeEmbedMode) {
                         val videoId = extractYouTubeVideoId(urlString)
                         if (videoId != null) {
@@ -129,7 +130,8 @@ class MainActivity : AppCompatActivity() {
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
                 if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-                    if (!WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
+                    val urlToCheck = convertYouTubeEmbedToWatchUrl(url) ?: url
+                    if (!WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
                         view?.post {
                             showHome()
                             showBlockedDialog(url)
@@ -613,6 +615,18 @@ class MainActivity : AppCompatActivity() {
 
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+    }
+
+    private fun convertYouTubeEmbedToWatchUrl(url: String): String? {
+        if (!youtubeEmbedMode) return null
+        val uri = android.net.Uri.parse(url)
+        val host = uri.host?.lowercase() ?: return null
+        if (host != "youtube.com" && host != "www.youtube.com") return null
+        val path = uri.path ?: return null
+        if (!path.startsWith("/embed/")) return null
+        val videoId = path.removePrefix("/embed/").takeWhile { it != '/' && it != '?' }
+        if (videoId.isEmpty()) return null
+        return "https://www.youtube.com/watch?v=$videoId"
     }
 
     private fun extractYouTubeVideoId(url: String): String? {
