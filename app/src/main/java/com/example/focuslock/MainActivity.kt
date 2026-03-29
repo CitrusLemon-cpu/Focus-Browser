@@ -1,5 +1,6 @@
 package com.example.focuslock
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.PorterDuff
@@ -12,6 +13,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -22,6 +24,8 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -37,9 +41,30 @@ class MainActivity : AppCompatActivity() {
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private val expandedFolderIds = mutableSetOf<String>()
+    private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
+    private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        fileChooserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val data = result.data
+                val results: Array<Uri>? = when {
+                    data?.clipData != null -> {
+                        Array(data.clipData!!.itemCount) { i -> data.clipData!!.getItemAt(i).uri }
+                    }
+                    data?.data != null -> {
+                        arrayOf(data.data!!)
+                    }
+                    else -> null
+                }
+                fileUploadCallback?.onReceiveValue(results ?: arrayOf())
+            } else {
+                fileUploadCallback?.onReceiveValue(null)
+            }
+            fileUploadCallback = null
+        }
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -48,8 +73,8 @@ class MainActivity : AppCompatActivity() {
         binding.webView.settings.domStorageEnabled = true
 
         binding.webView.settings.safeBrowsingEnabled = true
-        binding.webView.settings.allowFileAccess = false
-        binding.webView.settings.allowContentAccess = false
+        binding.webView.settings.allowFileAccess = true
+        binding.webView.settings.allowContentAccess = true
         binding.webView.settings.setGeolocationEnabled(false)
         binding.webView.settings.databaseEnabled = false
 
@@ -121,6 +146,30 @@ class MainActivity : AppCompatActivity() {
 
             override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
                 callback?.invoke(origin, false, false)
+            }
+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                fileUploadCallback?.onReceiveValue(null)
+                fileUploadCallback = filePathCallback
+
+                val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "*/*"
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }
+
+                try {
+                    fileChooserLauncher.launch(intent)
+                } catch (e: Exception) {
+                    fileUploadCallback?.onReceiveValue(null)
+                    fileUploadCallback = null
+                    return false
+                }
+                return true
             }
 
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
