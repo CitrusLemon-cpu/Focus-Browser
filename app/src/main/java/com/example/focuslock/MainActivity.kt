@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
@@ -43,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private val currentFolderId: String? get() = folderStack.last()
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
+    private var activeFilterTag: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -296,6 +298,7 @@ class MainActivity : AppCompatActivity() {
         binding.urlBar.setText("")
         folderStack.clear()
         folderStack.add(null)
+        activeFilterTag = null
         refreshHomeList()
     }
 
@@ -308,18 +311,26 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildItemList(): List<HomeItem> {
         val items = mutableListOf<HomeItem>()
-        val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
-        for (folder in subfolders) {
-            items.add(HomeItem.FolderItem(folder))
-        }
-        val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
-        for (entry in entries) {
-            items.add(HomeItem.EntryItem(entry))
+        if (activeFilterTag != null) {
+            val matchingEntries = WhitelistManager.getEntriesByTag(this, activeFilterTag!!)
+            for (entry in matchingEntries) {
+                items.add(HomeItem.EntryItem(entry))
+            }
+        } else {
+            val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
+            for (folder in subfolders) {
+                items.add(HomeItem.FolderItem(folder))
+            }
+            val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
+            for (entry in entries) {
+                items.add(HomeItem.EntryItem(entry))
+            }
         }
         return items
     }
 
     private fun refreshHomeList() {
+        updateTagFilter()
         val items = buildItemList()
         if (items.isEmpty()) {
             binding.homeList.visibility = View.GONE
@@ -337,7 +348,7 @@ class MainActivity : AppCompatActivity() {
                     folderStack.add(folder.id)
                     refreshHomeList()
                 },
-                onFolderRename = { folder -> showRenameFolderDialog(folder) },
+                onFolderLongPress = { folder -> showFolderMetadataDialog(folder) },
                 onFolderDelete = { folder -> showDeleteFolderDialog(folder) },
                 onEntryClick = { entry ->
                     val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) entry.url
@@ -345,7 +356,7 @@ class MainActivity : AppCompatActivity() {
                     showWebView()
                     binding.webView.loadUrl(url)
                 },
-                onEntryRename = { entry -> showRenameDialog(entry) },
+                onEntryLongPress = { entry -> showEntryMetadataDialog(entry) },
                 onEntryDelete = { entry ->
                     AlertDialog.Builder(this)
                         .setTitle("Remove Entry")
@@ -360,7 +371,92 @@ class MainActivity : AppCompatActivity() {
             )
             binding.homeList.adapter = adapter
         }
-        updateBreadcrumb()
+
+        if (activeFilterTag != null) {
+            binding.breadcrumbScroll.visibility = View.GONE
+            binding.fabNewFolder.visibility = View.GONE
+        } else {
+            binding.fabNewFolder.visibility = View.VISIBLE
+            updateBreadcrumb()
+        }
+    }
+
+    private fun updateTagFilter() {
+        val allTags = WhitelistManager.getAllTags(this).sorted()
+        val container = binding.tagFilterContainer
+        container.removeAllViews()
+
+        if (allTags.isEmpty()) {
+            binding.tagFilterScroll.visibility = View.GONE
+            return
+        }
+
+        binding.tagFilterScroll.visibility = View.VISIBLE
+        val dp = resources.displayMetrics.density
+
+        val allChip = TextView(this).apply {
+            text = "All"
+            textSize = 13f
+            setPadding((12 * dp).toInt(), (6 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
+            val isActive = activeFilterTag == null
+            val bg = GradientDrawable().apply {
+                cornerRadius = 16 * dp
+                if (isActive) {
+                    setColor(getColor(com.google.android.material.R.color.design_default_color_primary))
+                } else {
+                    setColor(0x1F000000)
+                }
+            }
+            background = bg
+            if (isActive) {
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(android.graphics.Color.WHITE)
+            }
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.marginEnd = (8 * dp).toInt()
+            layoutParams = lp
+            setOnClickListener {
+                activeFilterTag = null
+                refreshHomeList()
+            }
+        }
+        container.addView(allChip)
+
+        for (tag in allTags) {
+            val chip = TextView(this).apply {
+                text = tag
+                textSize = 13f
+                setPadding((12 * dp).toInt(), (6 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
+                val isActive = activeFilterTag == tag
+                val bg = GradientDrawable().apply {
+                    cornerRadius = 16 * dp
+                    if (isActive) {
+                        setColor(getColor(com.google.android.material.R.color.design_default_color_primary))
+                    } else {
+                        setColor(0x1F000000)
+                    }
+                }
+                background = bg
+                if (isActive) {
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(android.graphics.Color.WHITE)
+                }
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                lp.marginEnd = (8 * dp).toInt()
+                layoutParams = lp
+                setOnClickListener {
+                    activeFilterTag = tag
+                    refreshHomeList()
+                }
+            }
+            container.addView(chip)
+        }
     }
 
     private fun updateBreadcrumb() {
@@ -445,26 +541,200 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showRenameFolderDialog(folder: Folder) {
+    private fun showFolderMetadataDialog(folder: Folder) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 0)
+            setPadding(48, 32, 48, 16)
         }
-        val input = EditText(this).apply {
+
+        val nameInput = EditText(this).apply {
             hint = "Folder name"
             setText(folder.name)
         }
-        layout.addView(input)
+        layout.addView(nameInput)
 
         AlertDialog.Builder(this)
-            .setTitle("Rename Folder")
+            .setTitle("Edit Folder")
             .setView(layout)
             .setPositiveButton("Save") { _, _ ->
-                val newName = input.text.toString().trim()
+                val newName = nameInput.text.toString().trim()
                 if (newName.isNotEmpty()) {
                     WhitelistManager.renameFolder(this, folder.id, newName)
                     refreshHomeList()
                 }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showEntryMetadataDialog(entry: WhitelistEntry) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 16)
+        }
+
+        val nameLabel = TextView(this).apply {
+            text = "Display Name"
+            textSize = 12f
+            setTextColor(android.graphics.Color.GRAY)
+        }
+        val nameInput = EditText(this).apply {
+            setText(entry.name)
+            hint = "Display name"
+        }
+        layout.addView(nameLabel)
+        layout.addView(nameInput)
+
+        val tagsLabel = TextView(this).apply {
+            text = "Tags"
+            textSize = 12f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, 24, 0, 8)
+        }
+        layout.addView(tagsLabel)
+
+        val chipScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val chipContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        chipScroll.addView(chipContainer)
+        layout.addView(chipScroll)
+
+        val currentTags = entry.tags.toMutableList()
+        val dp = resources.displayMetrics.density
+
+        fun rebuildChips() {
+            chipContainer.removeAllViews()
+            for (tag in currentTags) {
+                val chip = TextView(this).apply {
+                    text = "$tag  \u2715"
+                    textSize = 13f
+                    setPadding((12 * dp).toInt(), (6 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
+                    val bg = GradientDrawable().apply {
+                        cornerRadius = 16 * dp
+                        setColor(0x1F000000)
+                    }
+                    background = bg
+                    val lp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    lp.marginEnd = (8 * dp).toInt()
+                    layoutParams = lp
+                    setOnClickListener {
+                        currentTags.remove(tag)
+                        rebuildChips()
+                    }
+                }
+                chipContainer.addView(chip)
+            }
+        }
+        rebuildChips()
+
+        val addTagRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 0)
+        }
+        val tagInput = EditText(this).apply {
+            hint = "Add tag..."
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+        }
+        val addBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Add"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        fun addTag() {
+            val tag = tagInput.text.toString().trim().lowercase()
+            if (tag.isNotEmpty() && tag !in currentTags) {
+                currentTags.add(tag)
+                tagInput.text.clear()
+                rebuildChips()
+            }
+        }
+
+        addBtn.setOnClickListener { addTag() }
+        tagInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                addTag()
+                true
+            } else false
+        }
+
+        addTagRow.addView(tagInput)
+        addTagRow.addView(addBtn)
+        layout.addView(addTagRow)
+
+        val allTags = WhitelistManager.getAllTags(this)
+        val suggestions = allTags.filter { it !in currentTags }
+        if (suggestions.isNotEmpty()) {
+            val suggestLabel = TextView(this).apply {
+                text = "Existing tags"
+                textSize = 11f
+                setTextColor(android.graphics.Color.GRAY)
+                setPadding(0, 16, 0, 4)
+            }
+            layout.addView(suggestLabel)
+
+            val suggestScroll = android.widget.HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+            }
+            val suggestContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            for (tag in suggestions) {
+                val chip = TextView(this).apply {
+                    text = "+ $tag"
+                    textSize = 12f
+                    setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (4 * dp).toInt())
+                    val bg = GradientDrawable().apply {
+                        cornerRadius = 16 * dp
+                        setColor(0x0F000000)
+                    }
+                    background = bg
+                    val lp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    lp.marginEnd = (8 * dp).toInt()
+                    layoutParams = lp
+                    setOnClickListener {
+                        if (tag !in currentTags) {
+                            currentTags.add(tag)
+                            rebuildChips()
+                            (parent as? LinearLayout)?.removeView(this)
+                        }
+                    }
+                }
+                suggestContainer.addView(chip)
+            }
+            suggestScroll.addView(suggestContainer)
+            layout.addView(suggestScroll)
+        }
+
+        val scrollView = android.widget.ScrollView(this).apply {
+            addView(layout)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Edit Site")
+            .setView(scrollView)
+            .setPositiveButton("Save") { _, _ ->
+                val newName = nameInput.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    WhitelistManager.updateEntryName(this, entry.url, newName)
+                }
+                WhitelistManager.setEntryTags(this, entry.url, currentTags)
+                refreshHomeList()
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -494,31 +764,6 @@ class MainActivity : AppCompatActivity() {
                 folderStack.removeAll { it != null && it !in remainingIds }
                 if (folderStack.isEmpty()) folderStack.add(null)
                 refreshHomeList()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun showRenameDialog(entry: WhitelistEntry) {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 0)
-        }
-        val input = EditText(this).apply {
-            hint = "Display name"
-            setText(entry.name)
-        }
-        layout.addView(input)
-
-        AlertDialog.Builder(this)
-            .setTitle("Rename")
-            .setView(layout)
-            .setPositiveButton("Save") { _, _ ->
-                val newName = input.text.toString().trim()
-                if (newName.isNotEmpty()) {
-                    WhitelistManager.updateEntryName(this, entry.url, newName)
-                    refreshHomeList()
-                }
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -565,7 +810,7 @@ class MainActivity : AppCompatActivity() {
                 display: none !important;
             }
         """.trimIndent().replace("\n", " ").replace("\"", "\\\"")
-        val js = "(function() { var style = document.createElement('style'); style.id = 'yt-focus-mode'; style.textContent = "$css"; if (!document.getElementById('yt-focus-mode')) { document.head.appendChild(style); } })()"
+        val js = "(function() { var style = document.createElement('style'); style.id = 'yt-focus-mode'; style.textContent = \"$css\"; if (!document.getElementById('yt-focus-mode')) { document.head.appendChild(style); } })()"
         view?.evaluateJavascript(js, null)
     }
 
@@ -582,7 +827,10 @@ class MainActivity : AppCompatActivity() {
                 showHome()
             }
         } else if (binding.homeScreen.visibility == View.VISIBLE) {
-            if (folderStack.size > 1) {
+            if (activeFilterTag != null) {
+                activeFilterTag = null
+                refreshHomeList()
+            } else if (folderStack.size > 1) {
                 folderStack.removeAt(folderStack.size - 1)
                 refreshHomeList()
             } else {
@@ -601,10 +849,10 @@ class MainActivity : AppCompatActivity() {
     private class HomeAdapter(
         items: List<HomeItem>,
         private val onFolderClick: (Folder) -> Unit,
-        private val onFolderRename: (Folder) -> Unit,
+        private val onFolderLongPress: (Folder) -> Unit,
         private val onFolderDelete: (Folder) -> Unit,
         private val onEntryClick: (WhitelistEntry) -> Unit,
-        private val onEntryRename: (WhitelistEntry) -> Unit,
+        private val onEntryLongPress: (WhitelistEntry) -> Unit,
         private val onEntryDelete: (WhitelistEntry) -> Unit
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -618,14 +866,12 @@ class MainActivity : AppCompatActivity() {
         class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val iconView: ImageView = view.findViewById(android.R.id.icon)
             val textView: TextView = view.findViewById(android.R.id.text1)
-            val editButton: ImageButton = view.findViewById(android.R.id.edit)
             val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
             val arrowView: TextView = view.findViewById(android.R.id.summary)
         }
 
         class EntryViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val textView: TextView = view.findViewById(android.R.id.text1)
-            val editButton: ImageButton = view.findViewById(android.R.id.edit)
             val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
         }
 
@@ -662,12 +908,6 @@ class MainActivity : AppCompatActivity() {
                         textSize = 16f
                         setTypeface(typeface, android.graphics.Typeface.BOLD)
                     }
-                    val editBtn = ImageButton(parent.context).apply {
-                        id = android.R.id.edit
-                        setImageResource(android.R.drawable.ic_menu_edit)
-                        setBackgroundResource(android.R.color.transparent)
-                        contentDescription = "Rename"
-                    }
                     val deleteBtn = ImageButton(parent.context).apply {
                         id = android.R.id.button1
                         setImageResource(android.R.drawable.ic_delete)
@@ -683,7 +923,6 @@ class MainActivity : AppCompatActivity() {
                     }
                     layout.addView(icon)
                     layout.addView(text)
-                    layout.addView(editBtn)
                     layout.addView(deleteBtn)
                     layout.addView(arrow)
                     FolderViewHolder(layout)
@@ -703,12 +942,6 @@ class MainActivity : AppCompatActivity() {
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                         textSize = 16f
                     }
-                    val editBtn = ImageButton(parent.context).apply {
-                        id = android.R.id.edit
-                        setImageResource(android.R.drawable.ic_menu_edit)
-                        setBackgroundResource(android.R.color.transparent)
-                        contentDescription = "Rename"
-                    }
                     val deleteBtn = ImageButton(parent.context).apply {
                         id = android.R.id.button1
                         setImageResource(android.R.drawable.ic_delete)
@@ -716,7 +949,6 @@ class MainActivity : AppCompatActivity() {
                         contentDescription = "Delete"
                     }
                     layout.addView(text)
-                    layout.addView(editBtn)
                     layout.addView(deleteBtn)
                     EntryViewHolder(layout)
                 }
@@ -729,14 +961,20 @@ class MainActivity : AppCompatActivity() {
                     val vh = holder as FolderViewHolder
                     vh.textView.text = item.folder.name
                     vh.itemView.setOnClickListener { onFolderClick(item.folder) }
-                    vh.editButton.setOnClickListener { onFolderRename(item.folder) }
+                    vh.itemView.setOnLongClickListener {
+                        onFolderLongPress(item.folder)
+                        true
+                    }
                     vh.deleteButton.setOnClickListener { onFolderDelete(item.folder) }
                 }
                 is HomeItem.EntryItem -> {
                     val vh = holder as EntryViewHolder
                     vh.textView.text = item.entry.name
                     vh.itemView.setOnClickListener { onEntryClick(item.entry) }
-                    vh.editButton.setOnClickListener { onEntryRename(item.entry) }
+                    vh.itemView.setOnLongClickListener {
+                        onEntryLongPress(item.entry)
+                        true
+                    }
                     vh.deleteButton.setOnClickListener { onEntryDelete(item.entry) }
                 }
             }
