@@ -18,6 +18,7 @@ id fullscreenContainer
 id homeList
 id homeScreen
 id recyclerView
+id searchResultsList
 id switchYoutubeEmbed
 id toolbar
 id urlBar

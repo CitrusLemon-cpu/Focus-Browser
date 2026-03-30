@@ -57,6 +57,9 @@ public final class ActivityMainBinding implements ViewBinding {
   public final LinearLayout homeScreen;
 
   @NonNull
+  public final RecyclerView searchResultsList;
+
+  @NonNull
   public final EditText urlBar;
 
   @NonNull
@@ -67,8 +70,8 @@ public final class ActivityMainBinding implements ViewBinding {
       @NonNull ImageButton btnDesktopMode, @NonNull ImageButton btnHome,
       @NonNull TextView emptyMessage, @NonNull FloatingActionButton fab,
       @NonNull FloatingActionButton fabNewFolder, @NonNull FrameLayout fullscreenContainer,
-      @NonNull RecyclerView homeList, @NonNull LinearLayout homeScreen, @NonNull EditText urlBar,
-      @NonNull WebView webView) {
+      @NonNull RecyclerView homeList, @NonNull LinearLayout homeScreen,
+      @NonNull RecyclerView searchResultsList, @NonNull EditText urlBar, @NonNull WebView webView) {
     this.rootView = rootView;
     this.breadcrumbContainer = breadcrumbContainer;
     this.breadcrumbScroll = breadcrumbScroll;
@@ -80,6 +83,7 @@ public final class ActivityMainBinding implements ViewBinding {
     this.fullscreenContainer = fullscreenContainer;
     this.homeList = homeList;
     this.homeScreen = homeScreen;
+    this.searchResultsList = searchResultsList;
     this.urlBar = urlBar;
     this.webView = webView;
   }
@@ -171,6 +175,12 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.searchResultsList;
+      RecyclerView searchResultsList = ViewBindings.findChildViewById(rootView, id);
+      if (searchResultsList == null) {
+        break missingId;
+      }
+
       id = R.id.urlBar;
       EditText urlBar = ViewBindings.findChildViewById(rootView, id);
       if (urlBar == null) {
@@ -185,7 +195,7 @@ public final class ActivityMainBinding implements ViewBinding {
 
       return new ActivityMainBinding((FrameLayout) rootView, breadcrumbContainer, breadcrumbScroll,
           btnDesktopMode, btnHome, emptyMessage, fab, fabNewFolder, fullscreenContainer, homeList,
-          homeScreen, urlBar, webView);
+          homeScreen, searchResultsList, urlBar, webView);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

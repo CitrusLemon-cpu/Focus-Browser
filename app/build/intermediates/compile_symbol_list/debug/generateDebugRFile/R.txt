@@ -17,6 +17,7 @@ int id fullscreenContainer 0x0
 int id homeList 0x0
 int id homeScreen 0x0
 int id recyclerView 0x0
+int id searchResultsList 0x0
 int id switchYoutubeEmbed 0x0
 int id toolbar 0x0
 int id urlBar 0x0
