@@ -103,7 +103,6 @@ class MainActivity : AppCompatActivity() {
                     refreshHomeList()
                 }
             }
-            binding.drawerLayout.closeDrawers()
         }
 
         binding.switchYoutubeEmbed.isChecked = prefs.getBoolean("youtube_focus_mode", false)
@@ -118,7 +117,6 @@ class MainActivity : AppCompatActivity() {
                 binding.invidiousInstanceContainer.visibility = View.GONE
             }
 
-            binding.drawerLayout.closeDrawers()
         }
 
         binding.switchInvidiousRedirect.isChecked = invidiousRedirectEnabled
@@ -142,7 +140,6 @@ class MainActivity : AppCompatActivity() {
                 binding.switchYoutubeEmbed.isChecked = false
             }
 
-            binding.drawerLayout.closeDrawers()
         }
 
         binding.invidiousInstanceGroup.setOnCheckedChangeListener { _, checkedId ->
@@ -1144,20 +1141,20 @@ currentEmbedVideoId = null
         </head>
         <body>
         <div class="header"><div id="title">Loading...</div></div>
-        <div class="tags">${'$'}tagsHtml</div>
+        ${if (tags.isNotEmpty()) "<div class=\"tags\">${tagsHtml}</div>" else ""}
         <div class="video-container">
-          <iframe src="https://www.youtube.com/embed/${'$'}videoId?autoplay=1&modestbranding=1"
+          <iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&modestbranding=1"
                   allow="autoplay; encrypted-media; fullscreen"
                   allowfullscreen></iframe>
         </div>
         <script>
-          fetch('https://noembed.com/embed?url=https://www.youtube.com/watch?v=${'$'}videoId')
+          fetch('https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}')
             .then(function(r) { return r.json(); })
             .then(function(data) {
               if (data.title) document.getElementById('title').textContent = data.title;
-              else document.getElementById('title').textContent = 'YouTube Video';
+              else document.getElementById('title').textContent = '';
             })
-            .catch(function() { document.getElementById('title').textContent = 'YouTube Video'; });
+            .catch(function() { document.getElementById('title').textContent = ''; });
         </script>
         </body>
         </html>
@@ -1175,7 +1172,7 @@ currentEmbedVideoId = null
             val normalizedUrl = WhitelistManager.normalizeUrl(originalUrl)
             if (!normalizedEntry.contains("/")) {
                 val urlDomain = normalizedUrl.substringBefore("/").substringBefore("?")
-                urlDomain == normalizedEntry || urlDomain.endsWith(".${'$'}normalizedEntry")
+                urlDomain == normalizedEntry || urlDomain.endsWith(".$normalizedEntry")
             } else {
                 normalizedUrl.startsWith(normalizedEntry)
             }
