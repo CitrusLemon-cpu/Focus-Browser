@@ -92,13 +92,13 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="YouTube Embed Mode"
+                android:text="YouTube Focus Mode"
                 android:textSize="16sp" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Hides recommended videos on YouTube"
+                android:text="Hides recommended videos and comments on YouTube"
                 android:textSize="12sp"
                 android:textColor="?attr/colorOnSurfaceVariant" />
 
