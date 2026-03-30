@@ -3,7 +3,7 @@ package com.example.focuslock
 import android.content.Context
 import org.json.JSONArray
 
-data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null, val sortOrder: Int = 0)
+data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null, val sortOrder: Int = 0, val description: String = "")
 
 data class Folder(
     val id: String,
@@ -30,7 +30,8 @@ object WhitelistManager {
                     url = element.getString("url"),
                     name = element.optString("name", element.getString("url")),
                     folderId = element.optString("folderId", null).takeIf { it?.isNotEmpty() == true },
-                    sortOrder = element.optInt("sortOrder", 0)
+                    sortOrder = element.optInt("sortOrder", 0),
+                    description = element.optString("description", "")
                 ))
             } else {
                 val raw = element.toString()
@@ -62,13 +63,13 @@ object WhitelistManager {
         return result
     }
 
-    fun addEntry(context: Context, url: String, name: String, folderId: String? = null) {
+    fun addEntry(context: Context, url: String, name: String, folderId: String? = null, description: String = "") {
         val normalizedUrl = normalizeUrl(url)
         val list = getWhitelist(context).toMutableList()
         if (list.none { it.url == normalizedUrl }) {
             val displayName = if (name.isBlank()) normalizedUrl else name.trim()
             val maxOrder = list.filter { it.folderId == folderId }.maxOfOrNull { it.sortOrder } ?: -1
-            list.add(WhitelistEntry(url = normalizedUrl, name = displayName, folderId = folderId, sortOrder = maxOrder + 1))
+            list.add(WhitelistEntry(url = normalizedUrl, name = displayName, folderId = folderId, sortOrder = maxOrder + 1, description = description.trim()))
             saveWhitelist(context, list)
         }
     }
@@ -79,13 +80,14 @@ object WhitelistManager {
         saveWhitelist(context, list)
     }
 
-    fun updateEntry(context: Context, oldUrl: String, newUrl: String, newName: String) {
+    fun updateEntry(context: Context, oldUrl: String, newUrl: String, newName: String, newDescription: String? = null) {
         val normalizedNew = normalizeUrl(newUrl)
         val list = getWhitelist(context).toMutableList()
         val index = list.indexOfFirst { it.url == oldUrl }
         if (index != -1) {
             val displayName = if (newName.isBlank()) normalizedNew else newName.trim()
-            list[index] = list[index].copy(url = normalizedNew, name = displayName)
+            val desc = if (newDescription != null) newDescription.trim() else list[index].description
+            list[index] = list[index].copy(url = normalizedNew, name = displayName, description = desc)
             saveWhitelist(context, list)
         }
     }
@@ -238,6 +240,7 @@ object WhitelistManager {
             obj.put("name", entry.name)
             if (entry.folderId != null) obj.put("folderId", entry.folderId)
             obj.put("sortOrder", entry.sortOrder)
+            if (entry.description.isNotEmpty()) obj.put("description", entry.description)
             array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

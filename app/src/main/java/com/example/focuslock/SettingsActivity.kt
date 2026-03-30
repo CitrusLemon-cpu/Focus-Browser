@@ -7,7 +7,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -21,7 +20,6 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var adapter: WhitelistAdapter
-    private val expandedFolderIds = mutableSetOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,7 +36,16 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun initSettings() {
-        refreshList()
+        adapter = WhitelistAdapter(
+            WhitelistManager.getWhitelist(this).toMutableList(),
+            onEdit = { entry -> showEditEntryDialog(entry) },
+            onDelete = { entry ->
+                WhitelistManager.removeEntry(this, entry.url)
+                refreshList()
+            }
+        )
+        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        binding.recyclerView.adapter = adapter
         binding.btnAdd.setOnClickListener { showAddEntryDialog() }
         binding.btnChangePassword.setOnClickListener { showChangePasswordFlow() }
         binding.btnClearData.setOnClickListener {
@@ -54,50 +61,8 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildSettingsList(): List<SettingsItem> {
-        val items = mutableListOf<SettingsItem>()
-        fun addChildren(parentFolderId: String?, depth: Int) {
-            val subfolders = WhitelistManager.getSubfolders(this, parentFolderId)
-            for (folder in subfolders) {
-                val isExpanded = folder.id in expandedFolderIds
-                items.add(SettingsItem.FolderItem(folder, depth, isExpanded))
-                if (isExpanded) {
-                    addChildren(folder.id, depth + 1)
-                }
-            }
-            val entries = WhitelistManager.getEntriesInFolder(this, parentFolderId)
-            for (entry in entries) {
-                items.add(SettingsItem.EntryItem(entry, depth))
-            }
-        }
-        addChildren(null, 0)
-        return items
-    }
-
     private fun refreshList() {
-        val items = buildSettingsList()
-        adapter = WhitelistAdapter(
-            items,
-            onFolderClick = { folder ->
-                if (folder.id in expandedFolderIds) {
-                    expandedFolderIds.remove(folder.id)
-                } else {
-                    expandedFolderIds.add(folder.id)
-                }
-                refreshList()
-            },
-            onFolderRename = { folder -> showRenameFolderDialog(folder) },
-            onFolderDelete = { folder -> showDeleteFolderDialog(folder) },
-            onEntryEdit = { entry -> showEditEntryDialog(entry) },
-            onEntryDelete = { entry ->
-                WhitelistManager.removeEntry(this, entry.url)
-                refreshList()
-            }
-        )
-        if (binding.recyclerView.layoutManager == null) {
-            binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        }
-        binding.recyclerView.adapter = adapter
+        adapter.updateList(WhitelistManager.getWhitelist(this).toMutableList())
     }
 
     private fun buildFolderChoices(): List<Pair<String?, String>> {
@@ -215,6 +180,11 @@ class SettingsActivity : AppCompatActivity() {
         val nameInput = EditText(this).apply {
             hint = "Display name (optional)"
         }
+        val descInput = EditText(this).apply {
+            hint = "Description (optional)"
+            minLines = 2
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
         val fetchBtn = com.google.android.material.button.MaterialButton(this).apply {
             text = "Fetch Title"
             layoutParams = LinearLayout.LayoutParams(
@@ -267,6 +237,7 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(urlInput)
         layout.addView(fetchBtn)
         layout.addView(nameInput)
+        layout.addView(descInput)
         layout.addView(folderSelector)
 
         AlertDialog.Builder(this)
@@ -280,6 +251,7 @@ class SettingsActivity : AppCompatActivity() {
                     getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                         val url = urlInput.text.toString().trim()
                         val name = nameInput.text.toString().trim()
+                        val desc = descInput.text.toString().trim()
 
                         if (url.isEmpty()) {
                             urlInput.error = "URL cannot be empty"
@@ -293,7 +265,7 @@ class SettingsActivity : AppCompatActivity() {
                             return@setOnClickListener
                         }
 
-                        WhitelistManager.addEntry(this@SettingsActivity, url, name, selectedFolderId)
+                        WhitelistManager.addEntry(this@SettingsActivity, url, name, selectedFolderId, desc)
                         refreshList()
                         dismiss()
                     }
@@ -314,6 +286,12 @@ class SettingsActivity : AppCompatActivity() {
         val nameInput = EditText(this).apply {
             hint = "Display name"
             setText(entry.name)
+        }
+        val descInput = EditText(this).apply {
+            hint = "Description"
+            setText(entry.description)
+            minLines = 2
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
         val fetchBtn = com.google.android.material.button.MaterialButton(this).apply {
             text = "Fetch Title"
@@ -368,6 +346,7 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(urlInput)
         layout.addView(fetchBtn)
         layout.addView(nameInput)
+        layout.addView(descInput)
         layout.addView(folderSelector)
 
         AlertDialog.Builder(this)
@@ -381,6 +360,7 @@ class SettingsActivity : AppCompatActivity() {
                     getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                         val newUrl = urlInput.text.toString().trim()
                         val newName = nameInput.text.toString().trim()
+                        val newDesc = descInput.text.toString().trim()
 
                         if (newUrl.isEmpty()) {
                             urlInput.error = "URL cannot be empty"
@@ -396,7 +376,7 @@ class SettingsActivity : AppCompatActivity() {
                             }
                         }
 
-                        WhitelistManager.updateEntry(this@SettingsActivity, entry.url, newUrl, newName)
+                        WhitelistManager.updateEntry(this@SettingsActivity, entry.url, newUrl, newName, newDesc)
                         if (selectedFolderId != entry.folderId) {
                             val urlToMove = WhitelistManager.normalizeUrl(newUrl)
                             WhitelistManager.moveEntryToFolder(this@SettingsActivity, urlToMove, selectedFolderId)
@@ -499,219 +479,72 @@ class SettingsActivity : AppCompatActivity() {
             }
     }
 
-    private fun showRenameFolderDialog(folder: Folder) {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 0)
-        }
-        val input = EditText(this).apply {
-            hint = "Folder name"
-            setText(folder.name)
-        }
-        layout.addView(input)
-
-        AlertDialog.Builder(this)
-            .setTitle("Rename Folder")
-            .setView(layout)
-            .setPositiveButton("Save") { _, _ ->
-                val newName = input.text.toString().trim()
-                if (newName.isNotEmpty()) {
-                    WhitelistManager.renameFolder(this, folder.id, newName)
-                    refreshList()
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun showDeleteFolderDialog(folder: Folder) {
-        val allFolders = WhitelistManager.getFolders(this)
-        fun countEntries(folderId: String): Int {
-            val direct = WhitelistManager.getEntriesInFolder(this, folderId).size
-            val childFolders = allFolders.filter { it.parentId == folderId }
-            return direct + childFolders.sumOf { countEntries(it.id) }
-        }
-        val entryCount = countEntries(folder.id)
-        val message = if (entryCount > 0) {
-            "Delete \"${folder.name}\" and its $entryCount site(s)? Those sites will be blocked again."
-        } else {
-            "Delete empty folder \"${folder.name}\"?"
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("Delete Folder")
-            .setMessage(message)
-            .setPositiveButton("Delete") { _, _ ->
-                expandedFolderIds.remove(folder.id)
-                WhitelistManager.deleteFolder(this, folder.id)
-                refreshList()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private sealed class SettingsItem {
-        data class FolderItem(val folder: Folder, val depth: Int, val isExpanded: Boolean) : SettingsItem()
-        data class EntryItem(val entry: WhitelistEntry, val depth: Int) : SettingsItem()
-    }
-
     private class WhitelistAdapter(
-        items: List<SettingsItem>,
-        private val onFolderClick: (Folder) -> Unit,
-        private val onFolderRename: (Folder) -> Unit,
-        private val onFolderDelete: (Folder) -> Unit,
-        private val onEntryEdit: (WhitelistEntry) -> Unit,
-        private val onEntryDelete: (WhitelistEntry) -> Unit
-    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        private var items: MutableList<WhitelistEntry>,
+        private val onEdit: (WhitelistEntry) -> Unit,
+        private val onDelete: (WhitelistEntry) -> Unit
+    ) : RecyclerView.Adapter<WhitelistAdapter.ViewHolder>() {
 
-        private var currentItems: MutableList<SettingsItem> = items.toMutableList()
-
-        companion object {
-            private const val VIEW_TYPE_FOLDER = 0
-            private const val VIEW_TYPE_ENTRY = 1
-        }
-
-        class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-            val chevronView: TextView = view.findViewById(android.R.id.toggle)
-            val iconView: ImageView = view.findViewById(android.R.id.icon)
-            val nameView: TextView = view.findViewById(android.R.id.text1)
-            val editButton: ImageButton = view.findViewById(android.R.id.edit)
-            val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
-        }
-
-        class EntryViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val nameView: TextView = view.findViewById(android.R.id.text1)
             val urlView: TextView = view.findViewById(android.R.id.text2)
             val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
         }
 
-        override fun getItemViewType(position: Int): Int {
-            return when (currentItems[position]) {
-                is SettingsItem.FolderItem -> VIEW_TYPE_FOLDER
-                is SettingsItem.EntryItem -> VIEW_TYPE_ENTRY
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+            val layout = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(48, 24, 48, 24)
+                gravity = android.view.Gravity.CENTER_VERTICAL
             }
+            val textContainer = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val nameText = TextView(parent.context).apply {
+                id = android.R.id.text1
+                textSize = 16f
+            }
+            val urlText = TextView(parent.context).apply {
+                id = android.R.id.text2
+                textSize = 12f
+                setTextColor(android.graphics.Color.GRAY)
+            }
+            textContainer.addView(nameText)
+            textContainer.addView(urlText)
+            val button = ImageButton(parent.context).apply {
+                id = android.R.id.button1
+                setImageResource(android.R.drawable.ic_delete)
+                setBackgroundResource(android.R.color.transparent)
+                contentDescription = "Delete"
+            }
+            layout.addView(textContainer)
+            layout.addView(button)
+            return ViewHolder(layout)
         }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-            return when (viewType) {
-                VIEW_TYPE_FOLDER -> {
-                    val layout = LinearLayout(parent.context).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT
-                        )
-                        setPadding(48, 24, 48, 24)
-                        gravity = android.view.Gravity.CENTER_VERTICAL
-                    }
-                    val chevron = TextView(parent.context).apply {
-                        id = android.R.id.toggle
-                        textSize = 14f
-                        val size = (24 * parent.context.resources.displayMetrics.density).toInt()
-                        layoutParams = LinearLayout.LayoutParams(size, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    }
-                    val icon = ImageView(parent.context).apply {
-                        id = android.R.id.icon
-                        setImageResource(android.R.drawable.ic_menu_agenda)
-                        val size = (32 * parent.context.resources.displayMetrics.density).toInt()
-                        layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                            marginEnd = 16
-                        }
-                    }
-                    val text = TextView(parent.context).apply {
-                        id = android.R.id.text1
-                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                        textSize = 16f
-                        setTypeface(typeface, android.graphics.Typeface.BOLD)
-                    }
-                    val editBtn = ImageButton(parent.context).apply {
-                        id = android.R.id.edit
-                        setImageResource(android.R.drawable.ic_menu_edit)
-                        setBackgroundResource(android.R.color.transparent)
-                        contentDescription = "Rename"
-                    }
-                    val deleteBtn = ImageButton(parent.context).apply {
-                        id = android.R.id.button1
-                        setImageResource(android.R.drawable.ic_delete)
-                        setBackgroundResource(android.R.color.transparent)
-                        contentDescription = "Delete"
-                    }
-                    layout.addView(chevron)
-                    layout.addView(icon)
-                    layout.addView(text)
-                    layout.addView(editBtn)
-                    layout.addView(deleteBtn)
-                    FolderViewHolder(layout)
-                }
-                else -> {
-                    val layout = LinearLayout(parent.context).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT
-                        )
-                        setPadding(48, 24, 48, 24)
-                        gravity = android.view.Gravity.CENTER_VERTICAL
-                    }
-                    val textContainer = LinearLayout(parent.context).apply {
-                        orientation = LinearLayout.VERTICAL
-                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                    }
-                    val nameText = TextView(parent.context).apply {
-                        id = android.R.id.text1
-                        textSize = 16f
-                    }
-                    val urlText = TextView(parent.context).apply {
-                        id = android.R.id.text2
-                        textSize = 12f
-                        setTextColor(android.graphics.Color.GRAY)
-                    }
-                    textContainer.addView(nameText)
-                    textContainer.addView(urlText)
-                    val button = ImageButton(parent.context).apply {
-                        id = android.R.id.button1
-                        setImageResource(android.R.drawable.ic_delete)
-                        setBackgroundResource(android.R.color.transparent)
-                        contentDescription = "Delete"
-                    }
-                    layout.addView(textContainer)
-                    layout.addView(button)
-                    EntryViewHolder(layout)
-                }
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val entry = items[position]
+            holder.nameView.text = entry.name
+            if (entry.folderId != null) {
+                val folder = WhitelistManager.getFolders(holder.itemView.context).find { it.id == entry.folderId }
+                holder.urlView.text = "${entry.url} \u00B7 ${folder?.name ?: "Unknown folder"}"
+            } else {
+                holder.urlView.text = entry.url
             }
+            holder.itemView.setOnClickListener { onEdit(entry) }
+            holder.deleteButton.setOnClickListener { onDelete(entry) }
         }
 
-        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            when (val item = currentItems[position]) {
-                is SettingsItem.FolderItem -> {
-                    val vh = holder as FolderViewHolder
-                    val density = vh.itemView.context.resources.displayMetrics.density
-                    val indentPx = (item.depth * 32 * density).toInt()
-                    vh.itemView.setPadding(48 + indentPx, 24, 48, 24)
-                    vh.chevronView.text = if (item.isExpanded) "\u25BC" else "\u25B6"
-                    vh.nameView.text = item.folder.name
-                    vh.itemView.setOnClickListener { onFolderClick(item.folder) }
-                    vh.editButton.setOnClickListener { onFolderRename(item.folder) }
-                    vh.deleteButton.setOnClickListener { onFolderDelete(item.folder) }
-                }
-                is SettingsItem.EntryItem -> {
-                    val vh = holder as EntryViewHolder
-                    val density = vh.itemView.context.resources.displayMetrics.density
-                    val indentPx = (item.depth * 32 * density).toInt()
-                    vh.itemView.setPadding(48 + indentPx, 24, 48, 24)
-                    vh.nameView.text = item.entry.name
-                    vh.urlView.text = item.entry.url
-                    vh.itemView.setOnClickListener { onEntryEdit(item.entry) }
-                    vh.deleteButton.setOnClickListener { onEntryDelete(item.entry) }
-                }
-            }
-        }
+        override fun getItemCount(): Int = items.size
 
-        fun updateList(newItems: List<SettingsItem>) {
-            currentItems = newItems.toMutableList()
+        fun updateList(newList: MutableList<WhitelistEntry>) {
+            items = newList
             notifyDataSetChanged()
         }
-
-        override fun getItemCount(): Int = currentItems.size
     }
 }

@@ -16,14 +16,15 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ArrayAdapter
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.focuslock.databinding.ActivityMainBinding
@@ -32,7 +33,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var desktopMode = false
-    private val expandedFolderIds = mutableSetOf<String>()
+    private var currentFolderId: String? = null
+    private var folderStack: MutableList<String?> = mutableListOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -143,6 +145,11 @@ class MainActivity : AppCompatActivity() {
         binding.fabNewFolder.setOnClickListener {
             showCreateFolderDialog()
         }
+
+        binding.btnFolderBack.setOnClickListener {
+            currentFolderId = folderStack.removeLastOrNull()
+            refreshHomeList()
+        }
     }
 
     private fun applyDesktopMode() {
@@ -209,6 +216,8 @@ class MainActivity : AppCompatActivity() {
         binding.fab.visibility = View.VISIBLE
         binding.fabNewFolder.visibility = View.VISIBLE
         binding.urlBar.setText("")
+        currentFolderId = null
+        folderStack.clear()
         refreshHomeList()
     }
 
@@ -219,182 +228,53 @@ class MainActivity : AppCompatActivity() {
         binding.fabNewFolder.visibility = View.GONE
     }
 
-    private fun buildItemList(): List<HomeItem> {
-        val items = mutableListOf<HomeItem>()
-        fun addChildren(parentFolderId: String?, depth: Int) {
-            val subfolders = WhitelistManager.getSubfolders(this, parentFolderId)
-            for (folder in subfolders) {
-                val isExpanded = folder.id in expandedFolderIds
-                items.add(HomeItem.FolderItem(folder, depth, isExpanded))
-                if (isExpanded) {
-                    addChildren(folder.id, depth + 1)
-                }
-            }
-            val entries = WhitelistManager.getEntriesInFolder(this, parentFolderId)
-            for (entry in entries) {
-                items.add(HomeItem.EntryItem(entry, depth))
-            }
-        }
-        addChildren(null, 0)
-        return items
-    }
-
     private fun refreshHomeList() {
-        val items = buildItemList()
+        if (currentFolderId != null) {
+            val folder = WhitelistManager.getFolders(this).find { it.id == currentFolderId }
+            binding.folderHeader.visibility = View.VISIBLE
+            binding.folderTitle.text = folder?.name ?: "Unknown"
+        } else {
+            binding.folderHeader.visibility = View.GONE
+        }
+
+        val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
+        val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
+
+        val items = mutableListOf<HomeItem>()
+        subfolders.forEach { items.add(HomeItem.FolderItem(it)) }
+        entries.forEach { items.add(HomeItem.EntryItem(it)) }
+
         if (items.isEmpty()) {
             binding.homeList.visibility = View.GONE
             binding.emptyMessage.visibility = View.VISIBLE
-            binding.emptyMessage.text = "No sites added yet.\nTap the \u2699 button to add sites in Settings."
+            if (currentFolderId != null) {
+                binding.emptyMessage.text = "This folder is empty"
+            } else {
+                binding.emptyMessage.text = "No sites added yet.\nTap the \u2699 button to add sites in Settings."
+            }
         } else {
             binding.homeList.visibility = View.VISIBLE
             binding.emptyMessage.visibility = View.GONE
-            if (binding.homeList.layoutManager == null) {
-                binding.homeList.layoutManager = LinearLayoutManager(this)
-            }
-            val adapter = HomeAdapter(
+            binding.homeList.layoutManager = LinearLayoutManager(this)
+            binding.homeList.adapter = HomeAdapter(
                 items,
                 onFolderClick = { folder ->
-                    if (folder.id in expandedFolderIds) {
-                        expandedFolderIds.remove(folder.id)
-                    } else {
-                        expandedFolderIds.add(folder.id)
-                    }
+                    folderStack.add(currentFolderId)
+                    currentFolderId = folder.id
                     refreshHomeList()
                 },
-                onFolderRename = { folder -> showRenameFolderDialog(folder) },
-                onFolderDelete = { folder -> showDeleteFolderDialog(folder) },
+                onFolderLongPress = { folder -> showFolderSettingsDialog(folder) },
                 onEntryClick = { entry ->
-                    val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) entry.url
-                    else "https://${entry.url}"
+                    val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
+                        entry.url
+                    } else {
+                        "https://${entry.url}"
+                    }
                     showWebView()
                     binding.webView.loadUrl(url)
                 },
-                onEntryRename = { entry -> showRenameDialog(entry) },
-                onEntryDelete = { entry ->
-                    AlertDialog.Builder(this)
-                        .setTitle("Remove Entry")
-                        .setMessage("Are you sure you want to remove ${entry.name}?")
-                        .setPositiveButton("Remove") { _, _ ->
-                            WhitelistManager.removeEntry(this, entry.url)
-                            refreshHomeList()
-                        }
-                        .setNegativeButton("Cancel", null)
-                        .show()
-                }
+                onEntryLongPress = { entry -> showEntrySettingsDialog(entry) }
             )
-            binding.homeList.adapter = adapter
-            setupDragDrop(adapter)
-        }
-    }
-
-    private fun setupDragDrop(adapter: HomeAdapter) {
-        val activity = this
-        val callback = object : ItemTouchHelper.Callback() {
-
-            override fun getMovementFlags(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder
-            ): Int {
-                val dragFlags = ItemTouchHelper.UP or ItemTouchHelper.DOWN
-                return makeMovementFlags(dragFlags, 0)
-            }
-
-            override fun isLongPressDragEnabled() = true
-
-            override fun onMove(
-                recyclerView: RecyclerView,
-                source: RecyclerView.ViewHolder,
-                target: RecyclerView.ViewHolder
-            ): Boolean {
-                val fromPos = source.adapterPosition
-                val toPos = target.adapterPosition
-                if (fromPos == RecyclerView.NO_POSITION || toPos == RecyclerView.NO_POSITION) return false
-                adapter.moveItem(fromPos, toPos)
-                return true
-            }
-
-            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
-
-            override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
-                super.onSelectedChanged(viewHolder, actionState)
-                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
-                    val pos = viewHolder.adapterPosition
-                    if (pos != RecyclerView.NO_POSITION) {
-                        adapter.setDragStartItem(adapter.getItems().getOrNull(pos))
-                    }
-                    viewHolder.itemView.alpha = 0.7f
-                    viewHolder.itemView.elevation = 8f
-                }
-            }
-
-            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
-                super.clearView(recyclerView, viewHolder)
-                viewHolder.itemView.alpha = 1.0f
-                viewHolder.itemView.elevation = 0f
-
-                val pos = viewHolder.adapterPosition
-                if (pos == RecyclerView.NO_POSITION) return
-
-                val items = adapter.getItems()
-                val draggedItem = adapter.getDraggedItem() ?: return
-                val targetItem = items.getOrNull(pos)
-
-                if (targetItem is HomeItem.FolderItem && draggedItem != targetItem) {
-                    when (draggedItem) {
-                        is HomeItem.EntryItem -> {
-                            WhitelistManager.moveEntryToFolder(activity, draggedItem.entry.url, targetItem.folder.id)
-                            expandedFolderIds.add(targetItem.folder.id)
-                        }
-                        is HomeItem.FolderItem -> {
-                            if (!isDescendant(draggedItem.folder.id, targetItem.folder.id)) {
-                                WhitelistManager.moveFolderToParent(activity, draggedItem.folder.id, targetItem.folder.id)
-                                expandedFolderIds.add(targetItem.folder.id)
-                            }
-                        }
-                    }
-                } else {
-                    persistCurrentOrder(adapter)
-                }
-
-                adapter.setDragStartItem(null)
-                refreshHomeList()
-            }
-        }
-
-        val touchHelper = ItemTouchHelper(callback)
-        touchHelper.attachToRecyclerView(binding.homeList)
-    }
-
-    private fun isDescendant(folderId: String, potentialParentId: String): Boolean {
-        if (folderId == potentialParentId) return true
-        val folders = WhitelistManager.getFolders(this)
-        fun check(currentId: String): Boolean {
-            return folders.filter { it.parentId == currentId }.any { it.id == potentialParentId || check(it.id) }
-        }
-        return check(folderId)
-    }
-
-    private fun persistCurrentOrder(adapter: HomeAdapter) {
-        val items = adapter.getItems()
-        val foldersByParent = mutableMapOf<String?, MutableList<String>>()
-        val entriesByFolder = mutableMapOf<String?, MutableList<String>>()
-
-        for (item in items) {
-            when (item) {
-                is HomeItem.FolderItem -> {
-                    foldersByParent.getOrPut(item.folder.parentId) { mutableListOf() }.add(item.folder.id)
-                }
-                is HomeItem.EntryItem -> {
-                    entriesByFolder.getOrPut(item.entry.folderId) { mutableListOf() }.add(item.entry.url)
-                }
-            }
-        }
-
-        for ((parentId, ids) in foldersByParent) {
-            WhitelistManager.reorderFolders(this, parentId, ids)
-        }
-        for ((folderId, urls) in entriesByFolder) {
-            WhitelistManager.reorderEntries(this, folderId, urls)
         }
     }
 
@@ -414,7 +294,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Create") { _, _ ->
                 val name = input.text.toString().trim()
                 if (name.isNotEmpty()) {
-                    WhitelistManager.createFolder(this, name, null)
+                    WhitelistManager.createFolder(this, name, currentFolderId)
                     refreshHomeList()
                 }
             }
@@ -422,28 +302,79 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showRenameFolderDialog(folder: Folder) {
+    private fun buildParentFolderChoices(excludeFolderId: String? = null): List<Pair<String?, String>> {
+        val allFolders = WhitelistManager.getFolders(this)
+        val excludeIds = mutableSetOf<String>()
+        if (excludeFolderId != null) {
+            excludeIds.add(excludeFolderId)
+            fun collectChildren(parentId: String) {
+                allFolders.filter { it.parentId == parentId }.forEach {
+                    excludeIds.add(it.id)
+                    collectChildren(it.id)
+                }
+            }
+            collectChildren(excludeFolderId)
+        }
+        val result = mutableListOf<Pair<String?, String>>(null to "None (root)")
+        fun addLevel(parentId: String?, indent: Int) {
+            allFolders.filter { it.parentId == parentId && it.id !in excludeIds }.forEach { folder ->
+                val prefix = "\u00A0\u00A0".repeat(indent)
+                result.add(folder.id to "$prefix${folder.name}")
+                addLevel(folder.id, indent + 1)
+            }
+        }
+        addLevel(null, 0)
+        return result
+    }
+
+    private fun showFolderSettingsDialog(folder: Folder) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 32, 48, 0)
         }
-        val input = EditText(this).apply {
+
+        val nameInput = EditText(this).apply {
             hint = "Folder name"
             setText(folder.name)
         }
-        layout.addView(input)
+        layout.addView(nameInput)
+
+        val parentChoices = buildParentFolderChoices(excludeFolderId = folder.id)
+        val parentNames = parentChoices.map { it.second }
+        val currentParentIndex = parentChoices.indexOfFirst { it.first == folder.parentId }.coerceAtLeast(0)
+
+        val parentLabel = TextView(this).apply {
+            text = "Parent folder"
+            textSize = 12f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, 24, 0, 4)
+        }
+        layout.addView(parentLabel)
+
+        val parentSpinner = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, parentNames)
+            setSelection(currentParentIndex)
+        }
+        layout.addView(parentSpinner)
 
         AlertDialog.Builder(this)
-            .setTitle("Rename Folder")
+            .setTitle("Folder Settings")
             .setView(layout)
             .setPositiveButton("Save") { _, _ ->
-                val newName = input.text.toString().trim()
+                val newName = nameInput.text.toString().trim()
                 if (newName.isNotEmpty()) {
                     WhitelistManager.renameFolder(this, folder.id, newName)
-                    refreshHomeList()
                 }
+                val selectedParentId = parentChoices[parentSpinner.selectedItemPosition].first
+                if (selectedParentId != folder.parentId) {
+                    WhitelistManager.moveFolderToParent(this, folder.id, selectedParentId)
+                }
+                refreshHomeList()
             }
             .setNegativeButton("Cancel", null)
+            .setNeutralButton("Delete") { _, _ ->
+                showDeleteFolderDialog(folder)
+            }
             .show()
     }
 
@@ -465,7 +396,9 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Delete Folder")
             .setMessage(message)
             .setPositiveButton("Delete") { _, _ ->
-                expandedFolderIds.remove(folder.id)
+                if (currentFolderId == folder.id) {
+                    currentFolderId = folderStack.removeLastOrNull()
+                }
                 WhitelistManager.deleteFolder(this, folder.id)
                 refreshHomeList()
             }
@@ -473,28 +406,49 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showRenameDialog(entry: WhitelistEntry) {
+    private fun showEntrySettingsDialog(entry: WhitelistEntry) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 32, 48, 0)
         }
-        val input = EditText(this).apply {
+
+        val nameInput = EditText(this).apply {
             hint = "Display name"
             setText(entry.name)
         }
-        layout.addView(input)
+        layout.addView(nameInput)
+
+        val descInput = EditText(this).apply {
+            hint = "Description"
+            setText(entry.description)
+            minLines = 2
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        layout.addView(descInput)
 
         AlertDialog.Builder(this)
-            .setTitle("Rename")
+            .setTitle("Site Settings")
             .setView(layout)
             .setPositiveButton("Save") { _, _ ->
-                val newName = input.text.toString().trim()
+                val newName = nameInput.text.toString().trim()
+                val newDesc = descInput.text.toString().trim()
                 if (newName.isNotEmpty()) {
-                    WhitelistManager.updateEntryName(this, entry.url, newName)
+                    WhitelistManager.updateEntry(this, entry.url, entry.url, newName, newDesc)
                     refreshHomeList()
                 }
             }
             .setNegativeButton("Cancel", null)
+            .setNeutralButton("Delete") { _, _ ->
+                AlertDialog.Builder(this)
+                    .setTitle("Remove Entry")
+                    .setMessage("Are you sure you want to remove ${entry.name}?")
+                    .setPositiveButton("Remove") { _, _ ->
+                        WhitelistManager.removeEntry(this, entry.url)
+                        refreshHomeList()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
             .show()
     }
 
@@ -506,7 +460,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Copy") { _, _ ->
                 val clip = android.content.ClipData.newPlainText("Blocked URL", url)
                 clipboard.setPrimaryClip(clip)
-                android.widget.Toast.makeText(this, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Dismiss", null)
             .show()
@@ -520,39 +474,26 @@ class MainActivity : AppCompatActivity() {
             } else {
                 showHome()
             }
+        } else if (currentFolderId != null) {
+            currentFolderId = folderStack.removeLastOrNull()
+            refreshHomeList()
         } else {
             super.onBackPressed()
         }
     }
 
     private sealed class HomeItem {
-        data class FolderItem(val folder: Folder, val depth: Int, val isExpanded: Boolean) : HomeItem()
-        data class EntryItem(val entry: WhitelistEntry, val depth: Int) : HomeItem()
+        data class FolderItem(val folder: Folder) : HomeItem()
+        data class EntryItem(val entry: WhitelistEntry) : HomeItem()
     }
 
     private class HomeAdapter(
-        items: List<HomeItem>,
+        private val items: List<HomeItem>,
         private val onFolderClick: (Folder) -> Unit,
-        private val onFolderRename: (Folder) -> Unit,
-        private val onFolderDelete: (Folder) -> Unit,
+        private val onFolderLongPress: (Folder) -> Unit,
         private val onEntryClick: (WhitelistEntry) -> Unit,
-        private val onEntryRename: (WhitelistEntry) -> Unit,
-        private val onEntryDelete: (WhitelistEntry) -> Unit
+        private val onEntryLongPress: (WhitelistEntry) -> Unit
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-
-        private val currentItems: MutableList<HomeItem> = items.toMutableList()
-        private var dragStartItem: HomeItem? = null
-
-        fun getItems(): List<HomeItem> = currentItems.toList()
-        fun getDraggedItem(): HomeItem? = dragStartItem
-        fun setDragStartItem(item: HomeItem?) { dragStartItem = item }
-
-        fun moveItem(fromPos: Int, toPos: Int) {
-            if (fromPos < 0 || toPos < 0 || fromPos >= currentItems.size || toPos >= currentItems.size) return
-            val item = currentItems.removeAt(fromPos)
-            currentItems.add(toPos, item)
-            notifyItemMoved(fromPos, toPos)
-        }
 
         companion object {
             private const val VIEW_TYPE_FOLDER = 0
@@ -560,21 +501,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-            val chevronView: TextView = view.findViewById(android.R.id.toggle)
             val iconView: ImageView = view.findViewById(android.R.id.icon)
             val textView: TextView = view.findViewById(android.R.id.text1)
-            val editButton: ImageButton = view.findViewById(android.R.id.edit)
-            val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
         }
 
         class EntryViewHolder(view: View) : RecyclerView.ViewHolder(view) {
             val textView: TextView = view.findViewById(android.R.id.text1)
-            val editButton: ImageButton = view.findViewById(android.R.id.edit)
-            val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
         }
 
         override fun getItemViewType(position: Int): Int {
-            return when (currentItems[position]) {
+            return when (items[position]) {
                 is HomeItem.FolderItem -> VIEW_TYPE_FOLDER
                 is HomeItem.EntryItem -> VIEW_TYPE_ENTRY
             }
@@ -592,12 +528,6 @@ class MainActivity : AppCompatActivity() {
                         setPadding(48, 24, 48, 24)
                         gravity = android.view.Gravity.CENTER_VERTICAL
                     }
-                    val chevron = TextView(parent.context).apply {
-                        id = android.R.id.toggle
-                        textSize = 14f
-                        val size = (24 * parent.context.resources.displayMetrics.density).toInt()
-                        layoutParams = LinearLayout.LayoutParams(size, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    }
                     val icon = ImageView(parent.context).apply {
                         id = android.R.id.icon
                         setImageResource(android.R.drawable.ic_menu_agenda)
@@ -612,23 +542,8 @@ class MainActivity : AppCompatActivity() {
                         textSize = 16f
                         setTypeface(typeface, android.graphics.Typeface.BOLD)
                     }
-                    val editBtn = ImageButton(parent.context).apply {
-                        id = android.R.id.edit
-                        setImageResource(android.R.drawable.ic_menu_edit)
-                        setBackgroundResource(android.R.color.transparent)
-                        contentDescription = "Rename"
-                    }
-                    val deleteBtn = ImageButton(parent.context).apply {
-                        id = android.R.id.button1
-                        setImageResource(android.R.drawable.ic_delete)
-                        setBackgroundResource(android.R.color.transparent)
-                        contentDescription = "Delete"
-                    }
-                    layout.addView(chevron)
                     layout.addView(icon)
                     layout.addView(text)
-                    layout.addView(editBtn)
-                    layout.addView(deleteBtn)
                     FolderViewHolder(layout)
                 }
                 else -> {
@@ -646,52 +561,35 @@ class MainActivity : AppCompatActivity() {
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                         textSize = 16f
                     }
-                    val editBtn = ImageButton(parent.context).apply {
-                        id = android.R.id.edit
-                        setImageResource(android.R.drawable.ic_menu_edit)
-                        setBackgroundResource(android.R.color.transparent)
-                        contentDescription = "Rename"
-                    }
-                    val deleteBtn = ImageButton(parent.context).apply {
-                        id = android.R.id.button1
-                        setImageResource(android.R.drawable.ic_delete)
-                        setBackgroundResource(android.R.color.transparent)
-                        contentDescription = "Delete"
-                    }
                     layout.addView(text)
-                    layout.addView(editBtn)
-                    layout.addView(deleteBtn)
                     EntryViewHolder(layout)
                 }
             }
         }
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            when (val item = currentItems[position]) {
+            when (val item = items[position]) {
                 is HomeItem.FolderItem -> {
                     val vh = holder as FolderViewHolder
-                    val density = vh.itemView.context.resources.displayMetrics.density
-                    val indentPx = (item.depth * 32 * density).toInt()
-                    vh.itemView.setPadding(48 + indentPx, 24, 48, 24)
-                    vh.chevronView.text = if (item.isExpanded) "\u25BC" else "\u25B6"
                     vh.textView.text = item.folder.name
                     vh.itemView.setOnClickListener { onFolderClick(item.folder) }
-                    vh.editButton.setOnClickListener { onFolderRename(item.folder) }
-                    vh.deleteButton.setOnClickListener { onFolderDelete(item.folder) }
+                    vh.itemView.setOnLongClickListener {
+                        onFolderLongPress(item.folder)
+                        true
+                    }
                 }
                 is HomeItem.EntryItem -> {
                     val vh = holder as EntryViewHolder
-                    val density = vh.itemView.context.resources.displayMetrics.density
-                    val indentPx = (item.depth * 32 * density).toInt()
-                    vh.itemView.setPadding(48 + indentPx, 24, 48, 24)
                     vh.textView.text = item.entry.name
                     vh.itemView.setOnClickListener { onEntryClick(item.entry) }
-                    vh.editButton.setOnClickListener { onEntryRename(item.entry) }
-                    vh.deleteButton.setOnClickListener { onEntryDelete(item.entry) }
+                    vh.itemView.setOnLongClickListener {
+                        onEntryLongPress(item.entry)
+                        true
+                    }
                 }
             }
         }
 
-        override fun getItemCount(): Int = currentItems.size
+        override fun getItemCount(): Int = items.size
     }
 }
