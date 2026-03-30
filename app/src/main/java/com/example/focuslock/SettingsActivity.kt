@@ -45,12 +45,6 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnAdd.setOnClickListener { showAddEntryDialog() }
         binding.btnChangePassword.setOnClickListener { showChangePasswordFlow() }
 
-        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
-        binding.switchYoutubeEmbed.isChecked = prefs.getBoolean("youtube_focus_mode", false)
-        binding.switchYoutubeEmbed.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("youtube_focus_mode", isChecked).apply()
-        }
-
         binding.btnClearData.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle("Clear Browsing Data")
@@ -428,6 +422,23 @@ class SettingsActivity : AppCompatActivity() {
         }
         layout.addView(parentSelector)
 
+        val hiddenRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 24, 0, 0)
+        }
+        val hiddenLabel = TextView(this).apply {
+            text = "Hidden"
+            textSize = 16f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val hiddenSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+            isChecked = folder.hidden
+        }
+        hiddenRow.addView(hiddenLabel)
+        hiddenRow.addView(hiddenSwitch)
+        layout.addView(hiddenRow)
+
         AlertDialog.Builder(this)
             .setTitle("Edit Folder")
             .setView(layout)
@@ -439,6 +450,7 @@ class SettingsActivity : AppCompatActivity() {
                 if (selectedParentId != folder.parentId) {
                     WhitelistManager.moveFolderToParent(this, folder.id, selectedParentId)
                 }
+                WhitelistManager.setFolderHidden(this, folder.id, hiddenSwitch.isChecked)
                 refreshList()
             }
             .setNegativeButton("Cancel", null)
@@ -652,6 +664,23 @@ class SettingsActivity : AppCompatActivity() {
         }
         layout.addView(folderSelector)
 
+        val hiddenRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 24, 0, 0)
+        }
+        val hiddenLabel = TextView(this).apply {
+            text = "Hidden"
+            textSize = 16f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val hiddenSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+            isChecked = entry.hidden
+        }
+        hiddenRow.addView(hiddenLabel)
+        hiddenRow.addView(hiddenSwitch)
+        layout.addView(hiddenRow)
+
         val scrollView = android.widget.ScrollView(this).apply { addView(layout) }
 
         AlertDialog.Builder(this)
@@ -683,6 +712,7 @@ class SettingsActivity : AppCompatActivity() {
                         if (selectedFolderId != entry.folderId) {
                             WhitelistManager.moveEntryToFolder(this@SettingsActivity, urlToUse, selectedFolderId)
                         }
+                        WhitelistManager.setEntryHidden(this@SettingsActivity, urlToUse, hiddenSwitch.isChecked)
                         refreshList()
                         dismiss()
                     }

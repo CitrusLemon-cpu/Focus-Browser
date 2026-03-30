@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
     private var activeFilterTag: String? = null
     private var isSearchMode = false
+    private var showHiddenItems = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,6 +86,26 @@ class MainActivity : AppCompatActivity() {
         desktopMode = prefs.getBoolean("desktop_mode", false)
         youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
         applyDesktopMode()
+
+        binding.switchShowHidden.isChecked = false
+        binding.switchShowHidden.setOnCheckedChangeListener { _, isChecked ->
+            showHiddenItems = isChecked
+            if (binding.homeScreen.visibility == View.VISIBLE) {
+                if (isSearchMode) {
+                    updateSearchResults(binding.urlBar.text.toString())
+                } else {
+                    refreshHomeList()
+                }
+            }
+            binding.drawerLayout.closeDrawers()
+        }
+
+        binding.switchYoutubeEmbed.isChecked = prefs.getBoolean("youtube_focus_mode", false)
+        binding.switchYoutubeEmbed.setOnCheckedChangeListener { _, isChecked ->
+            youtubeFocusMode = isChecked
+            prefs.edit().putBoolean("youtube_focus_mode", isChecked).apply()
+            binding.drawerLayout.closeDrawers()
+        }
 
         binding.webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -334,15 +355,18 @@ class MainActivity : AppCompatActivity() {
         if (activeFilterTag != null) {
             val matchingEntries = WhitelistManager.getEntriesByTag(this, activeFilterTag!!)
             for (entry in matchingEntries) {
+                if (!showHiddenItems && WhitelistManager.isEntryEffectivelyHidden(this, entry)) continue
                 items.add(HomeItem.EntryItem(entry))
             }
         } else {
             val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
             for (folder in subfolders) {
+                if (!showHiddenItems && folder.hidden) continue
                 items.add(HomeItem.FolderItem(folder))
             }
             val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
             for (entry in entries) {
+                if (!showHiddenItems && entry.hidden) continue
                 items.add(HomeItem.EntryItem(entry))
             }
         }
@@ -465,7 +489,15 @@ class MainActivity : AppCompatActivity() {
         val trimmedQuery = query.trim().lowercase()
 
         if (trimmedQuery.isEmpty()) {
-            val allTags = WhitelistManager.getAllTags(this).sorted()
+            val allTags = if (showHiddenItems) {
+                WhitelistManager.getAllTags(this).sorted()
+            } else {
+                WhitelistManager.getWhitelist(this)
+                    .filter { !WhitelistManager.isEntryEffectivelyHidden(this, it) }
+                    .flatMap { it.tags }
+                    .toSet()
+                    .sorted()
+            }
             if (allTags.isNotEmpty()) {
                 items.add(SearchItem.SectionHeader("Tags"))
                 for (tag in allTags) {
@@ -473,7 +505,15 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } else {
-            val allTags = WhitelistManager.getAllTags(this).sorted()
+            val allTags = if (showHiddenItems) {
+                WhitelistManager.getAllTags(this).sorted()
+            } else {
+                WhitelistManager.getWhitelist(this)
+                    .filter { !WhitelistManager.isEntryEffectivelyHidden(this, it) }
+                    .flatMap { it.tags }
+                    .toSet()
+                    .sorted()
+            }
             val matchingTags = allTags.filter { it.lowercase().contains(trimmedQuery) }
             if (matchingTags.isNotEmpty()) {
                 items.add(SearchItem.SectionHeader("Tags"))
@@ -484,7 +524,8 @@ class MainActivity : AppCompatActivity() {
 
             val allFolders = WhitelistManager.getFolders(this)
             val matchingFolders = allFolders.filter {
-                it.name.lowercase().contains(trimmedQuery)
+                it.name.lowercase().contains(trimmedQuery) &&
+                (showHiddenItems || !WhitelistManager.isFolderEffectivelyHidden(this, it.id))
             }.sortedBy { it.name.lowercase() }
             if (matchingFolders.isNotEmpty()) {
                 items.add(SearchItem.SectionHeader("Folders"))
@@ -495,8 +536,9 @@ class MainActivity : AppCompatActivity() {
 
             val allEntries = WhitelistManager.getWhitelist(this)
             val matchingEntries = allEntries.filter {
-                it.name.lowercase().contains(trimmedQuery) ||
-                it.url.lowercase().contains(trimmedQuery)
+                (it.name.lowercase().contains(trimmedQuery) ||
+                it.url.lowercase().contains(trimmedQuery)) &&
+                (showHiddenItems || !WhitelistManager.isEntryEffectivelyHidden(this, it))
             }.sortedBy { it.name.lowercase() }
             if (matchingEntries.isNotEmpty()) {
                 items.add(SearchItem.SectionHeader("Sites"))
@@ -623,6 +665,23 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(nameInput)
 
+        val hiddenRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 24, 0, 0)
+        }
+        val hiddenLabel = TextView(this).apply {
+            text = "Hidden"
+            textSize = 16f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val hiddenSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+            isChecked = folder.hidden
+        }
+        hiddenRow.addView(hiddenLabel)
+        hiddenRow.addView(hiddenSwitch)
+        layout.addView(hiddenRow)
+
         AlertDialog.Builder(this)
             .setTitle("Edit Folder")
             .setView(layout)
@@ -630,8 +689,9 @@ class MainActivity : AppCompatActivity() {
                 val newName = nameInput.text.toString().trim()
                 if (newName.isNotEmpty()) {
                     WhitelistManager.renameFolder(this, folder.id, newName)
-                    refreshHomeList()
                 }
+                WhitelistManager.setFolderHidden(this, folder.id, hiddenSwitch.isChecked)
+                refreshHomeList()
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -791,6 +851,23 @@ class MainActivity : AppCompatActivity() {
             layout.addView(suggestScroll)
         }
 
+        val hiddenRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 24, 0, 0)
+        }
+        val hiddenLabel = TextView(this).apply {
+            text = "Hidden"
+            textSize = 16f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val hiddenSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+            isChecked = entry.hidden
+        }
+        hiddenRow.addView(hiddenLabel)
+        hiddenRow.addView(hiddenSwitch)
+        layout.addView(hiddenRow)
+
         val scrollView = android.widget.ScrollView(this).apply {
             addView(layout)
         }
@@ -804,6 +881,7 @@ class MainActivity : AppCompatActivity() {
                     WhitelistManager.updateEntryName(this, entry.url, newName)
                 }
                 WhitelistManager.setEntryTags(this, entry.url, currentTags)
+                WhitelistManager.setEntryHidden(this, entry.url, hiddenSwitch.isChecked)
                 refreshHomeList()
             }
             .setNegativeButton("Cancel", null)
@@ -886,6 +964,10 @@ class MainActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        if (binding.drawerLayout.isDrawerOpen(android.view.Gravity.START)) {
+            binding.drawerLayout.closeDrawers()
+            return
+        }
         if (fullscreenView != null) {
             exitFullscreen()
             return
@@ -910,6 +992,16 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             super.onBackPressed()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+        youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
+        binding.switchYoutubeEmbed.isChecked = youtubeFocusMode
+        if (binding.homeScreen.visibility == View.VISIBLE) {
+            refreshHomeList()
         }
     }
 
@@ -1032,6 +1124,8 @@ class MainActivity : AppCompatActivity() {
                 is HomeItem.FolderItem -> {
                     val vh = holder as FolderViewHolder
                     vh.textView.text = item.folder.name
+                    val folderAlpha = if (item.folder.hidden) 0.5f else 1.0f
+                    vh.itemView.alpha = folderAlpha
                     vh.itemView.setOnClickListener { onFolderClick(item.folder) }
                     vh.itemView.setOnLongClickListener {
                         onFolderLongPress(item.folder)
@@ -1042,6 +1136,8 @@ class MainActivity : AppCompatActivity() {
                 is HomeItem.EntryItem -> {
                     val vh = holder as EntryViewHolder
                     vh.textView.text = item.entry.name
+                    val entryAlpha = if (item.entry.hidden) 0.5f else 1.0f
+                    vh.itemView.alpha = entryAlpha
                     vh.itemView.setOnClickListener { onEntryClick(item.entry) }
                     vh.itemView.setOnLongClickListener {
                         onEntryLongPress(item.entry)
