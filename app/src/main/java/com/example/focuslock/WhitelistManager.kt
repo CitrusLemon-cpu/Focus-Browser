@@ -3,13 +3,14 @@ package com.example.focuslock
 import android.content.Context
 import org.json.JSONArray
 
-data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null, val sortOrder: Int = 0, val tags: List<String> = emptyList())
+data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null, val sortOrder: Int = 0, val tags: List<String> = emptyList(), val hidden: Boolean = false)
 
 data class Folder(
     val id: String,
     val name: String,
     val parentId: String?,
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+    val hidden: Boolean = false
 )
 
 object WhitelistManager {
@@ -33,12 +34,14 @@ object WhitelistManager {
                         tags.add(tagsArray.getString(j))
                     }
                 }
+                val hidden = element.optBoolean("hidden", false)
                 list.add(WhitelistEntry(
                     url = element.getString("url"),
                     name = element.optString("name", element.getString("url")),
                     folderId = element.optString("folderId", null).takeIf { it?.isNotEmpty() == true },
                     sortOrder = element.optInt("sortOrder", 0),
-                    tags = tags
+                    tags = tags,
+                    hidden = hidden
                 ))
             } else {
                 val raw = element.toString()
@@ -140,7 +143,8 @@ object WhitelistManager {
                 id = obj.getString("id"),
                 name = obj.getString("name"),
                 parentId = obj.optString("parentId", null).takeIf { it?.isNotEmpty() == true },
-                sortOrder = obj.optInt("sortOrder", 0)
+                sortOrder = obj.optInt("sortOrder", 0),
+                hidden = obj.optBoolean("hidden", false)
             ))
         }
         return list
@@ -251,6 +255,7 @@ object WhitelistManager {
                 for (tag in entry.tags) { tagsArr.put(tag) }
                 obj.put("tags", tagsArr)
             }
+            if (entry.hidden) obj.put("hidden", true)
             array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -299,6 +304,41 @@ object WhitelistManager {
         return getWhitelist(context).filter { normalizedTag in it.tags }
     }
 
+    fun setEntryHidden(context: Context, url: String, hidden: Boolean) {
+        val list = getWhitelist(context).toMutableList()
+        val index = list.indexOfFirst { it.url == url }
+        if (index != -1) {
+            list[index] = list[index].copy(hidden = hidden)
+            saveWhitelist(context, list)
+        }
+    }
+
+    fun setFolderHidden(context: Context, folderId: String, hidden: Boolean) {
+        val list = getFolders(context).toMutableList()
+        val index = list.indexOfFirst { it.id == folderId }
+        if (index != -1) {
+            list[index] = list[index].copy(hidden = hidden)
+            saveFolders(context, list)
+        }
+    }
+
+    fun isFolderEffectivelyHidden(context: Context, folderId: String): Boolean {
+        val allFolders = getFolders(context)
+        var currentId: String? = folderId
+        while (currentId != null) {
+            val folder = allFolders.find { it.id == currentId } ?: return false
+            if (folder.hidden) return true
+            currentId = folder.parentId
+        }
+        return false
+    }
+
+    fun isEntryEffectivelyHidden(context: Context, entry: WhitelistEntry): Boolean {
+        if (entry.hidden) return true
+        val folderId = entry.folderId ?: return false
+        return isFolderEffectivelyHidden(context, folderId)
+    }
+
     private fun saveFolders(context: Context, list: List<Folder>) {
         val array = JSONArray()
         for (folder in list) {
@@ -307,6 +347,7 @@ object WhitelistManager {
             obj.put("name", folder.name)
             if (folder.parentId != null) obj.put("parentId", folder.parentId)
             obj.put("sortOrder", folder.sortOrder)
+            if (folder.hidden) obj.put("hidden", true)
             array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
