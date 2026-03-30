@@ -451,6 +451,7 @@ currentEmbedVideoId = null
             val rewritten = rewriteYouTubeToInvidious(url)
             hideKeyboard()
             showWebView()
+            applyUserAgentForUrl(url)
             binding.webView.loadUrl(rewritten)
             return
         }
