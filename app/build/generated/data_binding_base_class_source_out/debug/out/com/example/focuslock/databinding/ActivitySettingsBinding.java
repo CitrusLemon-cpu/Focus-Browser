@@ -4,6 +4,7 @@ package com.example.focuslock.databinding;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -13,6 +14,7 @@ import androidx.viewbinding.ViewBinding;
 import androidx.viewbinding.ViewBindings;
 import com.example.focuslock.R;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.switchmaterial.SwitchMaterial;
 import java.lang.NullPointerException;
 import java.lang.Override;
 import java.lang.String;
@@ -20,6 +22,12 @@ import java.lang.String;
 public final class ActivitySettingsBinding implements ViewBinding {
   @NonNull
   private final LinearLayout rootView;
+
+  @NonNull
+  public final LinearLayout breadcrumbContainer;
+
+  @NonNull
+  public final HorizontalScrollView breadcrumbScroll;
 
   @NonNull
   public final MaterialButton btnAdd;
@@ -34,16 +42,24 @@ public final class ActivitySettingsBinding implements ViewBinding {
   public final RecyclerView recyclerView;
 
   @NonNull
+  public final SwitchMaterial switchYoutubeEmbed;
+
+  @NonNull
   public final Toolbar toolbar;
 
-  private ActivitySettingsBinding(@NonNull LinearLayout rootView, @NonNull MaterialButton btnAdd,
-      @NonNull MaterialButton btnChangePassword, @NonNull MaterialButton btnClearData,
-      @NonNull RecyclerView recyclerView, @NonNull Toolbar toolbar) {
+  private ActivitySettingsBinding(@NonNull LinearLayout rootView,
+      @NonNull LinearLayout breadcrumbContainer, @NonNull HorizontalScrollView breadcrumbScroll,
+      @NonNull MaterialButton btnAdd, @NonNull MaterialButton btnChangePassword,
+      @NonNull MaterialButton btnClearData, @NonNull RecyclerView recyclerView,
+      @NonNull SwitchMaterial switchYoutubeEmbed, @NonNull Toolbar toolbar) {
     this.rootView = rootView;
+    this.breadcrumbContainer = breadcrumbContainer;
+    this.breadcrumbScroll = breadcrumbScroll;
     this.btnAdd = btnAdd;
     this.btnChangePassword = btnChangePassword;
     this.btnClearData = btnClearData;
     this.recyclerView = recyclerView;
+    this.switchYoutubeEmbed = switchYoutubeEmbed;
     this.toolbar = toolbar;
   }
 
@@ -74,6 +90,18 @@ public final class ActivitySettingsBinding implements ViewBinding {
     // This is done to optimize the compiled bytecode for size and performance.
     int id;
     missingId: {
+      id = R.id.breadcrumbContainer;
+      LinearLayout breadcrumbContainer = ViewBindings.findChildViewById(rootView, id);
+      if (breadcrumbContainer == null) {
+        break missingId;
+      }
+
+      id = R.id.breadcrumbScroll;
+      HorizontalScrollView breadcrumbScroll = ViewBindings.findChildViewById(rootView, id);
+      if (breadcrumbScroll == null) {
+        break missingId;
+      }
+
       id = R.id.btnAdd;
       MaterialButton btnAdd = ViewBindings.findChildViewById(rootView, id);
       if (btnAdd == null) {
@@ -98,14 +126,21 @@ public final class ActivitySettingsBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.switchYoutubeEmbed;
+      SwitchMaterial switchYoutubeEmbed = ViewBindings.findChildViewById(rootView, id);
+      if (switchYoutubeEmbed == null) {
+        break missingId;
+      }
+
       id = R.id.toolbar;
       Toolbar toolbar = ViewBindings.findChildViewById(rootView, id);
       if (toolbar == null) {
         break missingId;
       }
 
-      return new ActivitySettingsBinding((LinearLayout) rootView, btnAdd, btnChangePassword,
-          btnClearData, recyclerView, toolbar);
+      return new ActivitySettingsBinding((LinearLayout) rootView, breadcrumbContainer,
+          breadcrumbScroll, btnAdd, btnChangePassword, btnClearData, recyclerView,
+          switchYoutubeEmbed, toolbar);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

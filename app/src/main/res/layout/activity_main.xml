@@ -70,6 +70,26 @@
                 android:background="?attr/colorSurface"
                 android:visibility="visible">
 
+                <HorizontalScrollView
+                    android:id="@+id/breadcrumbScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:scrollbars="none"
+                    android:visibility="gone"
+                    android:background="?attr/colorSurfaceVariant">
+
+                    <LinearLayout
+                        android:id="@+id/breadcrumbContainer"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:paddingTop="10dp"
+                        android:paddingBottom="10dp"
+                        android:gravity="center_vertical" />
+                </HorizontalScrollView>
+
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/homeList"
                     android:layout_width="match_parent"

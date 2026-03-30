@@ -3,7 +3,7 @@ package com.example.focuslock
 import android.content.Context
 import org.json.JSONArray
 
-data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null, val sortOrder: Int = 0)
+data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null, val sortOrder: Int = 0, val tags: List<String> = emptyList())
 
 data class Folder(
     val id: String,
@@ -26,11 +26,19 @@ object WhitelistManager {
         for (i in 0 until array.length()) {
             val element = array.get(i)
             if (element is org.json.JSONObject) {
+                val tagsArray = element.optJSONArray("tags")
+                val tags = mutableListOf<String>()
+                if (tagsArray != null) {
+                    for (j in 0 until tagsArray.length()) {
+                        tags.add(tagsArray.getString(j))
+                    }
+                }
                 list.add(WhitelistEntry(
                     url = element.getString("url"),
                     name = element.optString("name", element.getString("url")),
                     folderId = element.optString("folderId", null).takeIf { it?.isNotEmpty() == true },
-                    sortOrder = element.optInt("sortOrder", 0)
+                    sortOrder = element.optInt("sortOrder", 0),
+                    tags = tags
                 ))
             } else {
                 val raw = element.toString()
@@ -238,12 +246,57 @@ object WhitelistManager {
             obj.put("name", entry.name)
             if (entry.folderId != null) obj.put("folderId", entry.folderId)
             obj.put("sortOrder", entry.sortOrder)
+            if (entry.tags.isNotEmpty()) {
+                val tagsArr = JSONArray()
+                for (tag in entry.tags) { tagsArr.put(tag) }
+                obj.put("tags", tagsArr)
+            }
             array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_WHITELIST, array.toString())
             .apply()
+    }
+
+    fun setEntryTags(context: Context, url: String, tags: List<String>) {
+        val list = getWhitelist(context).toMutableList()
+        val index = list.indexOfFirst { it.url == url }
+        if (index != -1) {
+            list[index] = list[index].copy(tags = tags.map { it.trim().lowercase() }.distinct())
+            saveWhitelist(context, list)
+        }
+    }
+
+    fun addTagToEntry(context: Context, url: String, tag: String) {
+        val list = getWhitelist(context).toMutableList()
+        val index = list.indexOfFirst { it.url == url }
+        if (index != -1) {
+            val normalizedTag = tag.trim().lowercase()
+            if (normalizedTag.isNotEmpty() && normalizedTag !in list[index].tags) {
+                list[index] = list[index].copy(tags = list[index].tags + normalizedTag)
+                saveWhitelist(context, list)
+            }
+        }
+    }
+
+    fun removeTagFromEntry(context: Context, url: String, tag: String) {
+        val list = getWhitelist(context).toMutableList()
+        val index = list.indexOfFirst { it.url == url }
+        if (index != -1) {
+            val normalizedTag = tag.trim().lowercase()
+            list[index] = list[index].copy(tags = list[index].tags - normalizedTag)
+            saveWhitelist(context, list)
+        }
+    }
+
+    fun getAllTags(context: Context): Set<String> {
+        return getWhitelist(context).flatMap { it.tags }.toSet()
+    }
+
+    fun getEntriesByTag(context: Context, tag: String): List<WhitelistEntry> {
+        val normalizedTag = tag.trim().lowercase()
+        return getWhitelist(context).filter { normalizedTag in it.tags }
     }
 
     private fun saveFolders(context: Context, list: List<Folder>) {

@@ -6,6 +6,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -22,7 +24,13 @@ import java.lang.String;
 
 public final class ActivityMainBinding implements ViewBinding {
   @NonNull
-  private final LinearLayout rootView;
+  private final FrameLayout rootView;
+
+  @NonNull
+  public final LinearLayout breadcrumbContainer;
+
+  @NonNull
+  public final HorizontalScrollView breadcrumbScroll;
 
   @NonNull
   public final ImageButton btnDesktopMode;
@@ -40,6 +48,9 @@ public final class ActivityMainBinding implements ViewBinding {
   public final FloatingActionButton fabNewFolder;
 
   @NonNull
+  public final FrameLayout fullscreenContainer;
+
+  @NonNull
   public final RecyclerView homeList;
 
   @NonNull
@@ -51,17 +62,22 @@ public final class ActivityMainBinding implements ViewBinding {
   @NonNull
   public final WebView webView;
 
-  private ActivityMainBinding(@NonNull LinearLayout rootView, @NonNull ImageButton btnDesktopMode,
-      @NonNull ImageButton btnHome, @NonNull TextView emptyMessage,
-      @NonNull FloatingActionButton fab, @NonNull FloatingActionButton fabNewFolder,
+  private ActivityMainBinding(@NonNull FrameLayout rootView,
+      @NonNull LinearLayout breadcrumbContainer, @NonNull HorizontalScrollView breadcrumbScroll,
+      @NonNull ImageButton btnDesktopMode, @NonNull ImageButton btnHome,
+      @NonNull TextView emptyMessage, @NonNull FloatingActionButton fab,
+      @NonNull FloatingActionButton fabNewFolder, @NonNull FrameLayout fullscreenContainer,
       @NonNull RecyclerView homeList, @NonNull LinearLayout homeScreen, @NonNull EditText urlBar,
       @NonNull WebView webView) {
     this.rootView = rootView;
+    this.breadcrumbContainer = breadcrumbContainer;
+    this.breadcrumbScroll = breadcrumbScroll;
     this.btnDesktopMode = btnDesktopMode;
     this.btnHome = btnHome;
     this.emptyMessage = emptyMessage;
     this.fab = fab;
     this.fabNewFolder = fabNewFolder;
+    this.fullscreenContainer = fullscreenContainer;
     this.homeList = homeList;
     this.homeScreen = homeScreen;
     this.urlBar = urlBar;
@@ -70,7 +86,7 @@ public final class ActivityMainBinding implements ViewBinding {
 
   @Override
   @NonNull
-  public LinearLayout getRoot() {
+  public FrameLayout getRoot() {
     return rootView;
   }
 
@@ -95,6 +111,18 @@ public final class ActivityMainBinding implements ViewBinding {
     // This is done to optimize the compiled bytecode for size and performance.
     int id;
     missingId: {
+      id = R.id.breadcrumbContainer;
+      LinearLayout breadcrumbContainer = ViewBindings.findChildViewById(rootView, id);
+      if (breadcrumbContainer == null) {
+        break missingId;
+      }
+
+      id = R.id.breadcrumbScroll;
+      HorizontalScrollView breadcrumbScroll = ViewBindings.findChildViewById(rootView, id);
+      if (breadcrumbScroll == null) {
+        break missingId;
+      }
+
       id = R.id.btnDesktopMode;
       ImageButton btnDesktopMode = ViewBindings.findChildViewById(rootView, id);
       if (btnDesktopMode == null) {
@@ -125,6 +153,12 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.fullscreenContainer;
+      FrameLayout fullscreenContainer = ViewBindings.findChildViewById(rootView, id);
+      if (fullscreenContainer == null) {
+        break missingId;
+      }
+
       id = R.id.homeList;
       RecyclerView homeList = ViewBindings.findChildViewById(rootView, id);
       if (homeList == null) {
@@ -149,8 +183,9 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      return new ActivityMainBinding((LinearLayout) rootView, btnDesktopMode, btnHome, emptyMessage,
-          fab, fabNewFolder, homeList, homeScreen, urlBar, webView);
+      return new ActivityMainBinding((FrameLayout) rootView, breadcrumbContainer, breadcrumbScroll,
+          btnDesktopMode, btnHome, emptyMessage, fab, fabNewFolder, fullscreenContainer, homeList,
+          homeScreen, urlBar, webView);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));
