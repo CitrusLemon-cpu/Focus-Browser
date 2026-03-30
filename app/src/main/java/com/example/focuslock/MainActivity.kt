@@ -186,6 +186,15 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
 
+                val currentUA = view?.settings?.userAgentString ?: ""
+                val expectedDesktop = desktopMode || requiresAutoDesktop(urlString)
+                val currentIsDesktop = currentUA.contains("Windows NT")
+                if (expectedDesktop != currentIsDesktop) {
+                    applyUserAgentForUrl(urlString)
+                    view?.post { view.loadUrl(urlString) }
+                    return true
+                }
+
                 val urlToCheck = if (invidiousRedirectEnabled && isInvidiousUrl(urlString)) {
                     invidiousToYouTubeUrl(urlString)
                 } else {
@@ -369,6 +378,24 @@ class MainActivity : AppCompatActivity() {
         updateDesktopModeIcon()
     }
 
+    private fun requiresAutoDesktop(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("instagram.com") ||
+               (lower.contains("facebook.com") && lower.contains("/messages"))
+    }
+
+    private fun applyUserAgentForUrl(url: String) {
+        val settings = binding.webView.settings
+        val useDesktop = desktopMode || requiresAutoDesktop(url)
+        settings.userAgentString = if (useDesktop) {
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        } else {
+            WebSettings.getDefaultUserAgent(this)
+        }
+        settings.useWideViewPort = useDesktop
+        settings.loadWithOverviewMode = useDesktop
+    }
+
     private fun updateDesktopModeIcon() {
         if (desktopMode) {
             val color = android.R.attr.colorPrimary
@@ -423,12 +450,14 @@ currentEmbedVideoId = null
             val rewritten = rewriteYouTubeToInvidious(url)
             hideKeyboard()
             showWebView()
+            applyUserAgentForUrl(url)
             binding.webView.loadUrl(rewritten)
             return
         }
 
         hideKeyboard()
         showWebView()
+        applyUserAgentForUrl(url)
         binding.webView.loadUrl(url)
     }
 
