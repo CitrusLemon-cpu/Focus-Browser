@@ -284,7 +284,8 @@ object WhitelistManager {
         val list = getWhitelist(context).toMutableList()
         val index = list.indexOfFirst { it.url == url }
         if (index != -1) {
-            list[index] = list[index].copy(tags = list[index].tags - tag)
+            val normalizedTag = tag.trim().lowercase()
+            list[index] = list[index].copy(tags = list[index].tags - normalizedTag)
             saveWhitelist(context, list)
         }
     }
@@ -294,7 +295,8 @@ object WhitelistManager {
     }
 
     fun getEntriesByTag(context: Context, tag: String): List<WhitelistEntry> {
-        return getWhitelist(context).filter { tag in it.tags }
+        val normalizedTag = tag.trim().lowercase()
+        return getWhitelist(context).filter { normalizedTag in it.tags }
     }
 
     private fun saveFolders(context: Context, list: List<Folder>) {

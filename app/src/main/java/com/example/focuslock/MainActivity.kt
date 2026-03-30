@@ -496,6 +496,10 @@ class MainActivity : AppCompatActivity() {
             .setMessage(message)
             .setPositiveButton("Delete") { _, _ ->
                 WhitelistManager.deleteFolder(this, folder.id)
+                val remainingFolders = WhitelistManager.getFolders(this@MainActivity)
+                val remainingIds = remainingFolders.map { it.id }.toSet()
+                folderStack.removeAll { it != null && it !in remainingIds }
+                if (folderStack.isEmpty()) folderStack.add(null)
                 refreshHomeList()
             }
             .setNegativeButton("Cancel", null)

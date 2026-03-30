@@ -611,6 +611,10 @@ class SettingsActivity : AppCompatActivity() {
             .setMessage(message)
             .setPositiveButton("Delete") { _, _ ->
                 WhitelistManager.deleteFolder(this, folder.id)
+                val remainingFolders = WhitelistManager.getFolders(this@SettingsActivity)
+                val remainingIds = remainingFolders.map { it.id }.toSet()
+                folderStack.removeAll { it != null && it !in remainingIds }
+                if (folderStack.isEmpty()) folderStack.add(null)
                 refreshList()
             }
             .setNegativeButton("Cancel", null)
