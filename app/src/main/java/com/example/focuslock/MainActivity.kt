@@ -170,7 +170,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (youtubeFocusMode && isYouTubeWatchPage(urlString)) {
                     val videoId = extractYouTubeVideoId(urlString)
-                    if (videoId != null && videoId != currentEmbedVideoId) {
+                    if (videoId != null && videoId != currentEmbedVideoId && WhitelistManager.isUrlAllowed(this@MainActivity, urlString)) {
                         view?.post { loadYouTubeEmbed(videoId, urlString) }
                         return true
                     }
@@ -411,7 +411,7 @@ class MainActivity : AppCompatActivity() {
 
         if (youtubeFocusMode && isYouTubeWatchPage(url)) {
             val videoId = extractYouTubeVideoId(url)
-            if (videoId != null) {
+            if (videoId != null && WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
                 hideKeyboard()
                 loadYouTubeEmbed(videoId, url)
                 return
