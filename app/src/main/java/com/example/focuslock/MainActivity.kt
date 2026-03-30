@@ -24,6 +24,7 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,6 +48,9 @@ class MainActivity : AppCompatActivity() {
     private var activeFilterTag: String? = null
     private var isSearchMode = false
     private var showHiddenItems = false
+    private var currentEmbedVideoId: String? = null
+    private var invidiousRedirectEnabled = false
+    private var invidiousInstance = "yewtu.be"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,6 +89,8 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
         desktopMode = prefs.getBoolean("desktop_mode", false)
         youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
+        invidiousRedirectEnabled = prefs.getBoolean("invidious_redirect_enabled", false)
+        invidiousInstance = prefs.getString("invidious_instance", "yewtu.be") ?: "yewtu.be"
         applyDesktopMode()
 
         binding.switchShowHidden.isChecked = false
@@ -104,7 +110,44 @@ class MainActivity : AppCompatActivity() {
         binding.switchYoutubeEmbed.setOnCheckedChangeListener { _, isChecked ->
             youtubeFocusMode = isChecked
             prefs.edit().putBoolean("youtube_focus_mode", isChecked).apply()
+
+            if (isChecked && invidiousRedirectEnabled) {
+                invidiousRedirectEnabled = false
+                prefs.edit().putBoolean("invidious_redirect_enabled", false).apply()
+                binding.switchInvidiousRedirect.isChecked = false
+                binding.invidiousInstanceContainer.visibility = View.GONE
+            }
+
             binding.drawerLayout.closeDrawers()
+        }
+
+        binding.switchInvidiousRedirect.isChecked = invidiousRedirectEnabled
+        binding.invidiousInstanceContainer.visibility = if (invidiousRedirectEnabled) View.VISIBLE else View.GONE
+
+        if (invidiousInstance == "invidious.nadeko.net") {
+            binding.radioNadeko.isChecked = true
+        } else {
+            binding.radioYewtu.isChecked = true
+        }
+
+        binding.switchInvidiousRedirect.setOnCheckedChangeListener { _, isChecked ->
+            invidiousRedirectEnabled = isChecked
+            prefs.edit().putBoolean("invidious_redirect_enabled", isChecked).apply()
+
+            binding.invidiousInstanceContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
+
+            if (isChecked && youtubeFocusMode) {
+                youtubeFocusMode = false
+                prefs.edit().putBoolean("youtube_focus_mode", false).apply()
+                binding.switchYoutubeEmbed.isChecked = false
+            }
+
+            binding.drawerLayout.closeDrawers()
+        }
+
+        binding.invidiousInstanceGroup.setOnCheckedChangeListener { _, checkedId ->
+            invidiousInstance = if (checkedId == binding.radioNadeko.id) "invidious.nadeko.net" else "yewtu.be"
+            prefs.edit().putString("invidious_instance", invidiousInstance).apply()
         }
 
         binding.webView.webViewClient = object : WebViewClient() {
@@ -119,7 +162,37 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val urlString = url.toString()
-                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlString)) {
+
+                if (isYouTubeShorts(urlString)) {
+                    view?.post {
+                        showHome()
+                        showShortsBlockedDialog()
+                    }
+                    return true
+                }
+
+                if (youtubeFocusMode && isYouTubeWatchPage(urlString)) {
+                    val videoId = extractYouTubeVideoId(urlString)
+                    if (videoId != null && videoId != currentEmbedVideoId) {
+                        view?.post { loadYouTubeEmbed(videoId, urlString) }
+                        return true
+                    }
+                }
+
+                currentEmbedVideoId = null
+
+                if (invidiousRedirectEnabled && isYouTubeUrl(urlString)) {
+                    val rewritten = rewriteYouTubeToInvidious(urlString)
+                    view?.post { view.loadUrl(rewritten) }
+                    return true
+                }
+
+                val urlToCheck = if (invidiousRedirectEnabled && isInvidiousUrl(urlString)) {
+                    invidiousToYouTubeUrl(urlString)
+                } else {
+                    urlString
+                }
+                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
                     false
                 } else {
                     view?.post {
@@ -132,27 +205,44 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                if (currentEmbedVideoId != null) return
+
                 if (url == "about:blank") {
                     view?.clearHistory()
                 } else {
                     url?.let { binding.urlBar.setText(it) }
                 }
-                if (youtubeFocusMode && url != null && isYouTubeWatchPage(url)) {
-                    injectYouTubeFocusCss(view)
-                }
             }
 
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
+                if (currentEmbedVideoId != null) return
+
                 if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-                    if (!WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
+                    if (isYouTubeShorts(url)) {
+                        view?.post {
+                            showHome()
+                            showShortsBlockedDialog()
+                        }
+                        return
+                    }
+                    val urlToCheck = if (invidiousRedirectEnabled && isInvidiousUrl(url)) {
+                        invidiousToYouTubeUrl(url)
+                    } else {
+                        url
+                    }
+                    if (!WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
                         view?.post {
                             showHome()
                             showBlockedDialog(url)
                         }
+                        return
                     }
                     if (youtubeFocusMode && isYouTubeWatchPage(url)) {
-                        view?.post { injectYouTubeFocusCss(view) }
+                        val videoId = extractYouTubeVideoId(url)
+                        if (videoId != null) {
+                            view?.post { loadYouTubeEmbed(videoId, url) }
+                        }
                     }
                 }
             }
@@ -296,6 +386,11 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
         youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
+        binding.switchYoutubeEmbed.isChecked = youtubeFocusMode
+        invidiousRedirectEnabled = prefs.getBoolean("invidious_redirect_enabled", false)
+        invidiousInstance = prefs.getString("invidious_instance", "yewtu.be") ?: "yewtu.be"
+        binding.switchInvidiousRedirect.isChecked = invidiousRedirectEnabled
+        binding.invidiousInstanceContainer.visibility = if (invidiousRedirectEnabled) View.VISIBLE else View.GONE
         if (binding.homeScreen.visibility == View.VISIBLE) {
             refreshHomeList()
         }
@@ -316,6 +411,26 @@ class MainActivity : AppCompatActivity() {
         } else {
             "https://www.google.com/search?q=${java.net.URLEncoder.encode(input, "UTF-8")}"
         }
+
+        if (youtubeFocusMode && isYouTubeWatchPage(url)) {
+            val videoId = extractYouTubeVideoId(url)
+            if (videoId != null) {
+                hideKeyboard()
+                loadYouTubeEmbed(videoId, url)
+                return
+            }
+        }
+
+currentEmbedVideoId = null
+
+        if (invidiousRedirectEnabled && isYouTubeUrl(url)) {
+            val rewritten = rewriteYouTubeToInvidious(url)
+            hideKeyboard()
+            showWebView()
+            binding.webView.loadUrl(rewritten)
+            return
+        }
+
         hideKeyboard()
         showWebView()
         binding.webView.loadUrl(url)
@@ -327,6 +442,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHome() {
+        currentEmbedVideoId = null
         binding.webView.stopLoading()
         binding.webView.loadUrl("about:blank")
         binding.homeScreen.visibility = View.VISIBLE
@@ -944,22 +1060,130 @@ class MainActivity : AppCompatActivity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
     }
 
+    private val invidiousHosts = listOf("yewtu.be", "invidious.nadeko.net")
+
+    private fun isYouTubeUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("youtube.com/") || lower.contains("youtu.be/")
+    }
+
+    private fun isInvidiousUrl(url: String): Boolean {
+        val host = Uri.parse(url).host?.lowercase() ?: return false
+        return invidiousHosts.any { host == it || host.endsWith(".$it") }
+    }
+
+    private fun rewriteYouTubeToInvidious(url: String): String {
+        val uri = Uri.parse(url)
+        if (uri.host == "youtu.be") {
+            val videoId = uri.pathSegments.firstOrNull() ?: return url
+            return "https://$invidiousInstance/watch?v=$videoId"
+        }
+        val builder = uri.buildUpon()
+            .scheme("https")
+            .authority(invidiousInstance)
+        return builder.build().toString()
+    }
+
+    private fun invidiousToYouTubeUrl(url: String): String {
+        val uri = Uri.parse(url)
+        val builder = uri.buildUpon()
+            .scheme("https")
+            .authority("www.youtube.com")
+        return builder.build().toString()
+    }
+
     private fun isYouTubeWatchPage(url: String): Boolean {
         val lower = url.lowercase()
         return (lower.contains("youtube.com/watch") || lower.contains("youtu.be/"))
     }
 
-    private fun injectYouTubeFocusCss(view: WebView?) {
-        val css = """
-            #related, #secondary, #secondary-inner, ytd-watch-next-secondary-results-renderer,
-            #comments, ytd-comments,
-            .ytp-endscreen-content, .ytp-ce-element, .ytp-suggestion-set,
-            #chip-bar, ytd-feed-filter-chip-bar-renderer {
-                display: none !important;
+    private fun isYouTubeShorts(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("youtube.com/shorts")
+    }
+
+    private fun showShortsBlockedDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("YouTube Shorts Blocked")
+            .setMessage("YouTube Shorts are blocked.")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun extractYouTubeVideoId(url: String): String? {
+        val uri = Uri.parse(url)
+        if (uri.host?.contains("youtube.com") == true && uri.path == "/watch") {
+            return uri.getQueryParameter("v")
+        }
+        if (uri.host == "youtu.be") {
+            return uri.pathSegments.firstOrNull()
+        }
+        return null
+    }
+
+    private fun buildEmbedHtml(videoId: String, title: String, tags: List<String>): String {
+        val tagsHtml = if (tags.isNotEmpty()) {
+            tags.joinToString(" ") { "<span class=\"tag\">${it.replace("<", "&lt;")}</span>" }
+        } else ""
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { background: #0f0f0f; color: #fff; font-family: -apple-system, sans-serif; }
+          .header { padding: 16px; }
+          #title { font-size: 18px; font-weight: 600; line-height: 1.3; }
+          .tags { padding: 4px 16px 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+          .tag { background: #272727; color: #aaa; padding: 4px 12px; border-radius: 16px; font-size: 13px; }
+          .video-container { width: 100%; aspect-ratio: 16/9; background: #000; }
+          .video-container iframe { width: 100%; height: 100%; border: none; }
+        </style>
+        </head>
+        <body>
+        <div class="header"><div id="title">Loading...</div></div>
+        <div class="tags">${'$'}tagsHtml</div>
+        <div class="video-container">
+          <iframe src="https://www.youtube.com/embed/${'$'}videoId?autoplay=1&modestbranding=1"
+                  allow="autoplay; encrypted-media; fullscreen"
+                  allowfullscreen></iframe>
+        </div>
+        <script>
+          fetch('https://noembed.com/embed?url=https://www.youtube.com/watch?v=${'$'}videoId')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data.title) document.getElementById('title').textContent = data.title;
+              else document.getElementById('title').textContent = 'YouTube Video';
+            })
+            .catch(function() { document.getElementById('title').textContent = 'YouTube Video'; });
+        </script>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    private fun loadYouTubeEmbed(videoId: String, originalUrl: String) {
+        currentEmbedVideoId = videoId
+        showWebView()
+        binding.urlBar.setText(originalUrl)
+
+        val whitelist = WhitelistManager.getWhitelist(this)
+        val matchingEntry = whitelist.find { entry ->
+            val normalizedEntry = WhitelistManager.normalizeUrl(entry.url)
+            val normalizedUrl = WhitelistManager.normalizeUrl(originalUrl)
+            if (!normalizedEntry.contains("/")) {
+                val urlDomain = normalizedUrl.substringBefore("/").substringBefore("?")
+                urlDomain == normalizedEntry || urlDomain.endsWith(".${'$'}normalizedEntry")
+            } else {
+                normalizedUrl.startsWith(normalizedEntry)
             }
-        """.trimIndent().replace("\n", " ").replace("\"", "\\\"")
-        val js = "(function() { var style = document.createElement('style'); style.id = 'yt-focus-mode'; style.textContent = \"$css\"; if (!document.getElementById('yt-focus-mode')) { document.head.appendChild(style); } })()"
-        view?.evaluateJavascript(js, null)
+        }
+        val tags = matchingEntry?.tags ?: emptyList()
+
+        val html = buildEmbedHtml(videoId, "Loading...", tags)
+        binding.webView.loadDataWithBaseURL("https://focus-embed.local/", html, "text/html", "UTF-8", null)
     }
 
     @Suppress("DEPRECATION")
@@ -973,7 +1197,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (binding.webView.visibility == View.VISIBLE) {
-            if (binding.webView.canGoBack()) {
+            if (currentEmbedVideoId != null) {
+                currentEmbedVideoId = null
+                showHome()
+            } else if (binding.webView.canGoBack()) {
                 binding.webView.goBack()
             } else {
                 showHome()
