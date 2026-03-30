@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity() {
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
     private var activeFilterTag: String? = null
+    private var isSearchMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -203,6 +204,22 @@ class MainActivity : AppCompatActivity() {
             } else false
         }
 
+        binding.urlBar.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus && binding.homeScreen.visibility == View.VISIBLE && !isSearchMode) {
+                enterSearchMode()
+            }
+        }
+
+        binding.urlBar.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (isSearchMode) {
+                    updateSearchResults(s?.toString() ?: "")
+                }
+            }
+        })
+
         showHome()
 
         binding.btnHome.setOnClickListener {
@@ -296,9 +313,12 @@ class MainActivity : AppCompatActivity() {
         binding.fab.visibility = View.VISIBLE
         binding.fabNewFolder.visibility = View.VISIBLE
         binding.urlBar.setText("")
+        binding.urlBar.clearFocus()
         folderStack.clear()
         folderStack.add(null)
         activeFilterTag = null
+        isSearchMode = false
+        binding.searchResultsList.visibility = View.GONE
         refreshHomeList()
     }
 
@@ -330,7 +350,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshHomeList() {
-        updateTagFilter()
         val items = buildItemList()
         if (items.isEmpty()) {
             binding.homeList.visibility = View.GONE
@@ -381,82 +400,133 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateTagFilter() {
-        val allTags = WhitelistManager.getAllTags(this).sorted()
-        val container = binding.tagFilterContainer
-        container.removeAllViews()
+    private fun enterSearchMode() {
+        isSearchMode = true
+        binding.homeList.visibility = View.GONE
+        binding.emptyMessage.visibility = View.GONE
+        binding.breadcrumbScroll.visibility = View.GONE
+        binding.fab.visibility = View.GONE
+        binding.fabNewFolder.visibility = View.GONE
+        binding.searchResultsList.visibility = View.VISIBLE
+        if (binding.searchResultsList.layoutManager == null) {
+            binding.searchResultsList.layoutManager = LinearLayoutManager(this)
+        }
+        updateSearchResults("")
+    }
 
-        if (allTags.isEmpty()) {
-            binding.tagFilterScroll.visibility = View.GONE
-            return
+    private fun exitSearchMode() {
+        isSearchMode = false
+        binding.searchResultsList.visibility = View.GONE
+        binding.urlBar.setText("")
+        binding.urlBar.clearFocus()
+        hideKeyboard()
+        binding.fab.visibility = View.VISIBLE
+        binding.fabNewFolder.visibility = View.VISIBLE
+        refreshHomeList()
+    }
+
+    private fun exitSearchModeAndRefresh() {
+        isSearchMode = false
+        binding.searchResultsList.visibility = View.GONE
+        binding.urlBar.setText("")
+        binding.urlBar.clearFocus()
+        hideKeyboard()
+        binding.fab.visibility = View.VISIBLE
+        binding.fabNewFolder.visibility = View.VISIBLE
+        refreshHomeList()
+    }
+
+    private fun navigateToFolder(folder: Folder) {
+        isSearchMode = false
+        binding.searchResultsList.visibility = View.GONE
+        binding.urlBar.setText("")
+        binding.urlBar.clearFocus()
+        hideKeyboard()
+        activeFilterTag = null
+
+        val allFolders = WhitelistManager.getFolders(this)
+        val path = mutableListOf<String>()
+        var currentId: String? = folder.id
+        while (currentId != null) {
+            path.add(0, currentId)
+            currentId = allFolders.find { it.id == currentId }?.parentId
         }
 
-        binding.tagFilterScroll.visibility = View.VISIBLE
-        val dp = resources.displayMetrics.density
+        folderStack.clear()
+        folderStack.add(null)
+        for (id in path) {
+            folderStack.add(id)
+        }
+        refreshHomeList()
+    }
 
-        val allChip = TextView(this).apply {
-            text = "All"
-            textSize = 13f
-            setPadding((12 * dp).toInt(), (6 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
-            val isActive = activeFilterTag == null
-            val bg = GradientDrawable().apply {
-                cornerRadius = 16 * dp
-                if (isActive) {
-                    setColor(getColor(com.google.android.material.R.color.design_default_color_primary))
-                } else {
-                    setColor(0x1F000000)
+    private fun updateSearchResults(query: String) {
+        val items = mutableListOf<SearchItem>()
+        val trimmedQuery = query.trim().lowercase()
+
+        if (trimmedQuery.isEmpty()) {
+            val allTags = WhitelistManager.getAllTags(this).sorted()
+            if (allTags.isNotEmpty()) {
+                items.add(SearchItem.SectionHeader("Tags"))
+                for (tag in allTags) {
+                    items.add(SearchItem.TagResult(tag))
                 }
             }
-            background = bg
-            if (isActive) {
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(android.graphics.Color.WHITE)
+        } else {
+            val allTags = WhitelistManager.getAllTags(this).sorted()
+            val matchingTags = allTags.filter { it.lowercase().contains(trimmedQuery) }
+            if (matchingTags.isNotEmpty()) {
+                items.add(SearchItem.SectionHeader("Tags"))
+                for (tag in matchingTags) {
+                    items.add(SearchItem.TagResult(tag))
+                }
             }
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.marginEnd = (8 * dp).toInt()
-            layoutParams = lp
-            setOnClickListener {
-                activeFilterTag = null
-                refreshHomeList()
+
+            val allFolders = WhitelistManager.getFolders(this)
+            val matchingFolders = allFolders.filter {
+                it.name.lowercase().contains(trimmedQuery)
+            }.sortedBy { it.name.lowercase() }
+            if (matchingFolders.isNotEmpty()) {
+                items.add(SearchItem.SectionHeader("Folders"))
+                for (folder in matchingFolders) {
+                    items.add(SearchItem.FolderResult(folder))
+                }
+            }
+
+            val allEntries = WhitelistManager.getWhitelist(this)
+            val matchingEntries = allEntries.filter {
+                it.name.lowercase().contains(trimmedQuery) ||
+                it.url.lowercase().contains(trimmedQuery)
+            }.sortedBy { it.name.lowercase() }
+            if (matchingEntries.isNotEmpty()) {
+                items.add(SearchItem.SectionHeader("Sites"))
+                for (entry in matchingEntries) {
+                    items.add(SearchItem.EntryResult(entry))
+                }
             }
         }
-        container.addView(allChip)
 
-        for (tag in allTags) {
-            val chip = TextView(this).apply {
-                text = tag
-                textSize = 13f
-                setPadding((12 * dp).toInt(), (6 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
-                val isActive = activeFilterTag == tag
-                val bg = GradientDrawable().apply {
-                    cornerRadius = 16 * dp
-                    if (isActive) {
-                        setColor(getColor(com.google.android.material.R.color.design_default_color_primary))
-                    } else {
-                        setColor(0x1F000000)
-                    }
-                }
-                background = bg
-                if (isActive) {
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
-                    setTextColor(android.graphics.Color.WHITE)
-                }
-                val lp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.marginEnd = (8 * dp).toInt()
-                layoutParams = lp
-                setOnClickListener {
-                    activeFilterTag = tag
-                    refreshHomeList()
-                }
+        val adapter = SearchAdapter(
+            items,
+            onTagClick = { tag ->
+                activeFilterTag = tag
+                exitSearchModeAndRefresh()
+            },
+            onFolderClick = { folder ->
+                navigateToFolder(folder)
+            },
+            onEntryClick = { entry ->
+                val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) entry.url
+                else "https://${entry.url}"
+                isSearchMode = false
+                binding.searchResultsList.visibility = View.GONE
+                binding.urlBar.clearFocus()
+                hideKeyboard()
+                showWebView()
+                binding.webView.loadUrl(url)
             }
-            container.addView(chip)
-        }
+        )
+        binding.searchResultsList.adapter = adapter
     }
 
     private fun updateBreadcrumb() {
@@ -827,7 +897,9 @@ class MainActivity : AppCompatActivity() {
                 showHome()
             }
         } else if (binding.homeScreen.visibility == View.VISIBLE) {
-            if (activeFilterTag != null) {
+            if (isSearchMode) {
+                exitSearchMode()
+            } else if (activeFilterTag != null) {
                 activeFilterTag = null
                 refreshHomeList()
             } else if (folderStack.size > 1) {
@@ -981,5 +1053,195 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun getItemCount(): Int = currentItems.size
+    }
+
+    private sealed class SearchItem {
+        data class SectionHeader(val title: String) : SearchItem()
+        data class TagResult(val tag: String) : SearchItem()
+        data class FolderResult(val folder: Folder) : SearchItem()
+        data class EntryResult(val entry: WhitelistEntry) : SearchItem()
+    }
+
+    private class SearchAdapter(
+        private val items: List<SearchItem>,
+        private val onTagClick: (String) -> Unit,
+        private val onFolderClick: (Folder) -> Unit,
+        private val onEntryClick: (WhitelistEntry) -> Unit
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+        companion object {
+            private const val TYPE_HEADER = 0
+            private const val TYPE_TAG = 1
+            private const val TYPE_FOLDER = 2
+            private const val TYPE_ENTRY = 3
+        }
+
+        class HeaderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val textView: TextView = view as TextView
+        }
+        class TagViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val textView: TextView = view.findViewById(android.R.id.text1)
+        }
+        class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val iconView: ImageView = view.findViewById(android.R.id.icon)
+            val textView: TextView = view.findViewById(android.R.id.text1)
+        }
+        class EntryViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val nameView: TextView = view.findViewById(android.R.id.text1)
+            val urlView: TextView = view.findViewById(android.R.id.text2)
+        }
+
+        override fun getItemViewType(position: Int) = when (items[position]) {
+            is SearchItem.SectionHeader -> TYPE_HEADER
+            is SearchItem.TagResult -> TYPE_TAG
+            is SearchItem.FolderResult -> TYPE_FOLDER
+            is SearchItem.EntryResult -> TYPE_ENTRY
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val ctx = parent.context
+            val dp = ctx.resources.displayMetrics.density
+            return when (viewType) {
+                TYPE_HEADER -> {
+                    val tv = TextView(ctx).apply {
+                        textSize = 12f
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                        setTextColor(android.graphics.Color.GRAY)
+                        setPadding((16 * dp).toInt(), (16 * dp).toInt(), (16 * dp).toInt(), (8 * dp).toInt())
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                    }
+                    HeaderViewHolder(tv)
+                }
+                TYPE_TAG -> {
+                    val layout = LinearLayout(ctx).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                        setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setBackgroundResource(android.R.attr.selectableItemBackground.let {
+                            val outValue = android.util.TypedValue()
+                            ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+                            outValue.resourceId
+                        })
+                    }
+                    val icon = TextView(ctx).apply {
+                        text = "#"
+                        textSize = 18f
+                        setTextColor(android.graphics.Color.GRAY)
+                        val size = (32 * dp).toInt()
+                        layoutParams = LinearLayout.LayoutParams(size, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            marginEnd = (8 * dp).toInt()
+                        }
+                        gravity = android.view.Gravity.CENTER
+                    }
+                    val text = TextView(ctx).apply {
+                        id = android.R.id.text1
+                        textSize = 16f
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+                    layout.addView(icon)
+                    layout.addView(text)
+                    TagViewHolder(layout)
+                }
+                TYPE_FOLDER -> {
+                    val layout = LinearLayout(ctx).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                        setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setBackgroundResource(android.R.attr.selectableItemBackground.let {
+                            val outValue = android.util.TypedValue()
+                            ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+                            outValue.resourceId
+                        })
+                    }
+                    val icon = ImageView(ctx).apply {
+                        id = android.R.id.icon
+                        setImageResource(android.R.drawable.ic_menu_agenda)
+                        val size = (32 * dp).toInt()
+                        layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                            marginEnd = (8 * dp).toInt()
+                        }
+                    }
+                    val text = TextView(ctx).apply {
+                        id = android.R.id.text1
+                        textSize = 16f
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+                    layout.addView(icon)
+                    layout.addView(text)
+                    FolderViewHolder(layout)
+                }
+                else -> {
+                    val layout = LinearLayout(ctx).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                        setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setBackgroundResource(android.R.attr.selectableItemBackground.let {
+                            val outValue = android.util.TypedValue()
+                            ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+                            outValue.resourceId
+                        })
+                    }
+                    val textContainer = LinearLayout(ctx).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+                    val nameText = TextView(ctx).apply {
+                        id = android.R.id.text1
+                        textSize = 16f
+                    }
+                    val urlText = TextView(ctx).apply {
+                        id = android.R.id.text2
+                        textSize = 12f
+                        setTextColor(android.graphics.Color.GRAY)
+                    }
+                    textContainer.addView(nameText)
+                    textContainer.addView(urlText)
+                    layout.addView(textContainer)
+                    EntryViewHolder(layout)
+                }
+            }
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (val item = items[position]) {
+                is SearchItem.SectionHeader -> {
+                    (holder as HeaderViewHolder).textView.text = item.title.uppercase()
+                }
+                is SearchItem.TagResult -> {
+                    val vh = holder as TagViewHolder
+                    vh.textView.text = item.tag
+                    vh.itemView.setOnClickListener { onTagClick(item.tag) }
+                }
+                is SearchItem.FolderResult -> {
+                    val vh = holder as FolderViewHolder
+                    vh.textView.text = item.folder.name
+                    vh.itemView.setOnClickListener { onFolderClick(item.folder) }
+                }
+                is SearchItem.EntryResult -> {
+                    val vh = holder as EntryViewHolder
+                    vh.nameView.text = item.entry.name
+                    vh.urlView.text = item.entry.url
+                    vh.itemView.setOnClickListener { onEntryClick(item.entry) }
+                }
+            }
+        }
+
+        override fun getItemCount() = items.size
     }
 }

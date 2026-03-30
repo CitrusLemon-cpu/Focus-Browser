@@ -90,24 +90,12 @@
                         android:gravity="center_vertical" />
                 </HorizontalScrollView>
 
-                <HorizontalScrollView
-                    android:id="@+id/tagFilterScroll"
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/searchResultsList"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:scrollbars="none"
-                    android:visibility="gone">
-
-                    <LinearLayout
-                        android:id="@+id/tagFilterContainer"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
-                        android:paddingTop="8dp"
-                        android:paddingBottom="8dp"
-                        android:gravity="center_vertical" />
-                </HorizontalScrollView>
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:visibility="gone" />
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/homeList"
