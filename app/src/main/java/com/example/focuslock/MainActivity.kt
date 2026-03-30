@@ -1221,17 +1221,6 @@ currentEmbedVideoId = null
             super.onBackPressed()
         }
     }
-
-    override fun onResume() {
-        super.onResume()
-        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
-        youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
-        binding.switchYoutubeEmbed.isChecked = youtubeFocusMode
-        if (binding.homeScreen.visibility == View.VISIBLE) {
-            refreshHomeList()
-        }
-    }
-
     private sealed class HomeItem {
         data class FolderItem(val folder: Folder) : HomeItem()
         data class EntryItem(val entry: WhitelistEntry) : HomeItem()
