@@ -3,6 +3,8 @@ int color white 0x0
 int dimen fab_margin 0x0
 int drawable ic_launcher_background 0x0
 int drawable ic_launcher_foreground 0x0
+int id breadcrumbContainer 0x0
+int id breadcrumbScroll 0x0
 int id btnAdd 0x0
 int id btnChangePassword 0x0
 int id btnClearData 0x0
@@ -11,9 +13,11 @@ int id btnHome 0x0
 int id emptyMessage 0x0
 int id fab 0x0
 int id fabNewFolder 0x0
+int id fullscreenContainer 0x0
 int id homeList 0x0
 int id homeScreen 0x0
 int id recyclerView 0x0
+int id switchYoutubeEmbed 0x0
 int id toolbar 0x0
 int id urlBar 0x0
 int id webView 0x0
