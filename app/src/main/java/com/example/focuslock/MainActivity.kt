@@ -84,7 +84,9 @@ class MainActivity : AppCompatActivity() {
         binding.webView.settings.allowFileAccess = true
         binding.webView.settings.allowContentAccess = true
         binding.webView.settings.setGeolocationEnabled(false)
-        binding.webView.settings.databaseEnabled = false
+        binding.webView.settings.databaseEnabled = true
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(binding.webView, true)
 
         val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
         desktopMode = prefs.getBoolean("desktop_mode", false)
@@ -395,10 +397,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        android.webkit.CookieManager.getInstance().removeAllCookies(null)
-        binding.webView.clearCache(true)
-        binding.webView.clearFormData()
-        binding.webView.clearHistory()
+        android.webkit.CookieManager.getInstance().flush()
     }
 
     private fun navigateToInput(input: String) {
