@@ -137,6 +137,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                currentEmbedVideoId = null
+
                 return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlString)) {
                     false
                 } else {
@@ -356,6 +358,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        currentEmbedVideoId = null
         hideKeyboard()
         showWebView()
         binding.webView.loadUrl(url)
