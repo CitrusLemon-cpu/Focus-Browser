@@ -24,6 +24,7 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,6 +49,8 @@ class MainActivity : AppCompatActivity() {
     private var isSearchMode = false
     private var showHiddenItems = false
     private var currentEmbedVideoId: String? = null
+    private var invidiousRedirectEnabled = false
+    private var invidiousInstance = "yewtu.be"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,6 +89,8 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
         desktopMode = prefs.getBoolean("desktop_mode", false)
         youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
+        invidiousRedirectEnabled = prefs.getBoolean("invidious_redirect_enabled", false)
+        invidiousInstance = prefs.getString("invidious_instance", "yewtu.be") ?: "yewtu.be"
         applyDesktopMode()
 
         binding.switchShowHidden.isChecked = false
@@ -105,7 +110,44 @@ class MainActivity : AppCompatActivity() {
         binding.switchYoutubeEmbed.setOnCheckedChangeListener { _, isChecked ->
             youtubeFocusMode = isChecked
             prefs.edit().putBoolean("youtube_focus_mode", isChecked).apply()
+
+            if (isChecked && invidiousRedirectEnabled) {
+                invidiousRedirectEnabled = false
+                prefs.edit().putBoolean("invidious_redirect_enabled", false).apply()
+                binding.switchInvidiousRedirect.isChecked = false
+                binding.invidiousInstanceContainer.visibility = View.GONE
+            }
+
             binding.drawerLayout.closeDrawers()
+        }
+
+        binding.switchInvidiousRedirect.isChecked = invidiousRedirectEnabled
+        binding.invidiousInstanceContainer.visibility = if (invidiousRedirectEnabled) View.VISIBLE else View.GONE
+
+        if (invidiousInstance == "invidious.nadeko.net") {
+            binding.radioNadeko.isChecked = true
+        } else {
+            binding.radioYewtu.isChecked = true
+        }
+
+        binding.switchInvidiousRedirect.setOnCheckedChangeListener { _, isChecked ->
+            invidiousRedirectEnabled = isChecked
+            prefs.edit().putBoolean("invidious_redirect_enabled", isChecked).apply()
+
+            binding.invidiousInstanceContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
+
+            if (isChecked && youtubeFocusMode) {
+                youtubeFocusMode = false
+                prefs.edit().putBoolean("youtube_focus_mode", false).apply()
+                binding.switchYoutubeEmbed.isChecked = false
+            }
+
+            binding.drawerLayout.closeDrawers()
+        }
+
+        binding.invidiousInstanceGroup.setOnCheckedChangeListener { _, checkedId ->
+            invidiousInstance = if (checkedId == binding.radioNadeko.id) "invidious.nadeko.net" else "yewtu.be"
+            prefs.edit().putString("invidious_instance", invidiousInstance).apply()
         }
 
         binding.webView.webViewClient = object : WebViewClient() {
@@ -139,7 +181,18 @@ class MainActivity : AppCompatActivity() {
 
                 currentEmbedVideoId = null
 
-                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlString)) {
+                if (invidiousRedirectEnabled && isYouTubeUrl(urlString)) {
+                    val rewritten = rewriteYouTubeToInvidious(urlString)
+                    view?.post { view.loadUrl(rewritten) }
+                    return true
+                }
+
+                val urlToCheck = if (invidiousRedirectEnabled && isInvidiousUrl(urlString)) {
+                    invidiousToYouTubeUrl(urlString)
+                } else {
+                    urlString
+                }
+                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
                     false
                 } else {
                     view?.post {
@@ -173,7 +226,12 @@ class MainActivity : AppCompatActivity() {
                         }
                         return
                     }
-                    if (!WhitelistManager.isUrlAllowed(this@MainActivity, url)) {
+                    val urlToCheck = if (invidiousRedirectEnabled && isInvidiousUrl(url)) {
+                        invidiousToYouTubeUrl(url)
+                    } else {
+                        url
+                    }
+                    if (!WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
                         view?.post {
                             showHome()
                             showBlockedDialog(url)
@@ -328,6 +386,11 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
         youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
+        binding.switchYoutubeEmbed.isChecked = youtubeFocusMode
+        invidiousRedirectEnabled = prefs.getBoolean("invidious_redirect_enabled", false)
+        invidiousInstance = prefs.getString("invidious_instance", "yewtu.be") ?: "yewtu.be"
+        binding.switchInvidiousRedirect.isChecked = invidiousRedirectEnabled
+        binding.invidiousInstanceContainer.visibility = if (invidiousRedirectEnabled) View.VISIBLE else View.GONE
         if (binding.homeScreen.visibility == View.VISIBLE) {
             refreshHomeList()
         }
@@ -358,7 +421,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        currentEmbedVideoId = null
+currentEmbedVideoId = null
+
+        if (invidiousRedirectEnabled && isYouTubeUrl(url)) {
+            val rewritten = rewriteYouTubeToInvidious(url)
+            hideKeyboard()
+            showWebView()
+            binding.webView.loadUrl(rewritten)
+            return
+        }
+
         hideKeyboard()
         showWebView()
         binding.webView.loadUrl(url)
@@ -986,6 +1058,38 @@ class MainActivity : AppCompatActivity() {
 
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+    }
+
+    private val invidiousHosts = listOf("yewtu.be", "invidious.nadeko.net")
+
+    private fun isYouTubeUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("youtube.com/") || lower.contains("youtu.be/")
+    }
+
+    private fun isInvidiousUrl(url: String): Boolean {
+        val host = Uri.parse(url).host?.lowercase() ?: return false
+        return invidiousHosts.any { host == it || host.endsWith(".$it") }
+    }
+
+    private fun rewriteYouTubeToInvidious(url: String): String {
+        val uri = Uri.parse(url)
+        if (uri.host == "youtu.be") {
+            val videoId = uri.pathSegments.firstOrNull() ?: return url
+            return "https://$invidiousInstance/watch?v=$videoId"
+        }
+        val builder = uri.buildUpon()
+            .scheme("https")
+            .authority(invidiousInstance)
+        return builder.build().toString()
+    }
+
+    private fun invidiousToYouTubeUrl(url: String): String {
+        val uri = Uri.parse(url)
+        val builder = uri.buildUpon()
+            .scheme("https")
+            .authority("www.youtube.com")
+        return builder.build().toString()
     }
 
     private fun isYouTubeWatchPage(url: String): Boolean {
