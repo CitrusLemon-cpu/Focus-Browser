@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var currentEmbedVideoId: String? = null
     private var invidiousRedirectEnabled = false
     private var invidiousInstance = "yewtu.be"
+    private var hideFinishedVideos = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,7 +94,15 @@ class MainActivity : AppCompatActivity() {
         youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
         invidiousRedirectEnabled = prefs.getBoolean("invidious_redirect_enabled", false)
         invidiousInstance = prefs.getString("invidious_instance", "yewtu.be") ?: "yewtu.be"
+        hideFinishedVideos = prefs.getBoolean("hide_finished_videos", false)
         applyDesktopMode()
+
+        binding.webView.addJavascriptInterface(object {
+            @android.webkit.JavascriptInterface
+            fun updateProgress(videoId: String, currentTime: Double, duration: Double) {
+                VideoProgressManager.updateProgress(this@MainActivity, videoId, currentTime, duration)
+            }
+        }, "FocusBridge")
 
         binding.switchShowHidden.isChecked = false
         binding.switchShowHidden.setOnCheckedChangeListener { _, isChecked ->
@@ -424,6 +433,7 @@ class MainActivity : AppCompatActivity() {
         binding.switchYoutubeEmbed.isChecked = youtubeFocusMode
         invidiousRedirectEnabled = prefs.getBoolean("invidious_redirect_enabled", false)
         invidiousInstance = prefs.getString("invidious_instance", "yewtu.be") ?: "yewtu.be"
+        hideFinishedVideos = prefs.getBoolean("hide_finished_videos", false)
         binding.switchInvidiousRedirect.isChecked = invidiousRedirectEnabled
         binding.invidiousInstanceContainer.visibility = if (invidiousRedirectEnabled) View.VISIBLE else View.GONE
         if (binding.homeScreen.visibility == View.VISIBLE) {
@@ -521,7 +531,41 @@ currentEmbedVideoId = null
                 items.add(HomeItem.EntryItem(entry))
             }
         }
-        return items
+
+        val allProgress = VideoProgressManager.getAllProgress(this)
+
+        if (hideFinishedVideos && !showHiddenItems) {
+            items.removeAll { item ->
+                if (item is HomeItem.EntryItem) {
+                    val vid = VideoProgressManager.extractVideoId(item.entry.url)
+                    vid != null && allProgress[vid]?.isFinished == true
+                } else false
+            }
+        }
+
+        val folders = items.filterIsInstance<HomeItem.FolderItem>()
+        val entries = items.filterIsInstance<HomeItem.EntryItem>()
+
+        val inProgress = mutableListOf<HomeItem.EntryItem>()
+        val normal = mutableListOf<HomeItem.EntryItem>()
+        val finished = mutableListOf<HomeItem.EntryItem>()
+
+        for (entry in entries) {
+            val vid = VideoProgressManager.extractVideoId(entry.entry.url)
+            val progress = if (vid != null) allProgress[vid] else null
+            when {
+                progress != null && progress.isFinished -> finished.add(entry)
+                progress != null && progress.isStarted -> inProgress.add(entry)
+                else -> normal.add(entry)
+            }
+        }
+
+        inProgress.sortByDescending { e ->
+            val vid = VideoProgressManager.extractVideoId(e.entry.url)
+            if (vid != null) allProgress[vid]?.lastWatched ?: 0L else 0L
+        }
+
+        return folders + inProgress + normal + finished
     }
 
     private fun refreshHomeList() {
@@ -1019,6 +1063,24 @@ currentEmbedVideoId = null
         hiddenRow.addView(hiddenSwitch)
         layout.addView(hiddenRow)
 
+        val entryVideoId = VideoProgressManager.extractVideoId(entry.url)
+        if (entryVideoId != null) {
+            val resetBtn = com.google.android.material.button.MaterialButton(this).apply {
+                text = "Reset Video Progress"
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 24
+                }
+                setOnClickListener {
+                    VideoProgressManager.resetProgress(this@MainActivity, entryVideoId)
+                    android.widget.Toast.makeText(this@MainActivity, "Video progress reset", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            layout.addView(resetBtn)
+        }
+
         val scrollView = android.widget.ScrollView(this).apply {
             addView(layout)
         }
@@ -1129,7 +1191,12 @@ currentEmbedVideoId = null
 
     private fun isYouTubeWatchPage(url: String): Boolean {
         val lower = url.lowercase()
-        return (lower.contains("youtube.com/watch") || lower.contains("youtu.be/"))
+        if (lower.contains("youtube.com/watch") || lower.contains("youtu.be/")) return true
+        val host = Uri.parse(url).host?.lowercase() ?: return false
+        if (invidiousHosts.any { host == it || host.endsWith(".$it") }) {
+            return lower.contains("/watch")
+        }
+        return false
     }
 
     private fun isYouTubeShorts(url: String): Boolean {
@@ -1146,20 +1213,17 @@ currentEmbedVideoId = null
     }
 
     private fun extractYouTubeVideoId(url: String): String? {
-        val uri = Uri.parse(url)
-        if (uri.host?.contains("youtube.com") == true && uri.path == "/watch") {
-            return uri.getQueryParameter("v")
-        }
-        if (uri.host == "youtu.be") {
-            return uri.pathSegments.firstOrNull()
-        }
-        return null
+        return VideoProgressManager.extractVideoId(url)
     }
 
     private fun buildEmbedHtml(videoId: String, title: String, tags: List<String>): String {
         val tagsHtml = if (tags.isNotEmpty()) {
             tags.joinToString(" ") { "<span class=\"tag\">${it.replace("<", "&lt;")}</span>" }
         } else ""
+
+        val existingProgress = VideoProgressManager.getProgress(this, videoId)
+        val initialPct = existingProgress?.percentage?.times(100)?.toInt() ?: 0
+        val initialColor = if (existingProgress != null && existingProgress.isFinished) "#4CAF50" else "#1976D2"
 
         return """
         <!DOCTYPE html>
@@ -1174,18 +1238,60 @@ currentEmbedVideoId = null
           .tags { padding: 4px 16px 12px; display: flex; flex-wrap: wrap; gap: 8px; }
           .tag { background: #272727; color: #aaa; padding: 4px 12px; border-radius: 16px; font-size: 13px; }
           .video-container { width: 100%; aspect-ratio: 16/9; background: #000; }
-          .video-container iframe { width: 100%; height: 100%; border: none; }
+          #progress-track { width: 100%; height: 4px; background: #272727; }
+          #progress-fill { height: 100%; width: ${initialPct}%; background: ${initialColor}; transition: width 0.3s ease; }
         </style>
         </head>
         <body>
         <div class="header"><div id="title">Loading...</div></div>
         ${if (tags.isNotEmpty()) "<div class=\"tags\">${tagsHtml}</div>" else ""}
-        <div class="video-container">
-          <iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&modestbranding=1"
-                  allow="autoplay; encrypted-media; fullscreen"
-                  allowfullscreen></iframe>
-        </div>
+        <div class="video-container"><div id="player"></div></div>
+        <div id="progress-track"><div id="progress-fill"></div></div>
+        <script src="https://www.youtube.com/iframe_api"></script>
         <script>
+          var player;
+          var progressInterval;
+          function onYouTubeIframeAPIReady() {
+            player = new YT.Player('player', {
+              width: '100%',
+              height: '100%',
+              videoId: '${videoId}',
+              playerVars: { autoplay: 1, modestbranding: 1, rel: 0 },
+              events: {
+                onReady: onPlayerReady,
+                onStateChange: onPlayerStateChange
+              }
+            });
+          }
+          function onPlayerReady(event) {
+            event.target.playVideo();
+          }
+          function updateProgressBar(ratio) {
+            var pct = Math.min(Math.max(ratio * 100, 0), 100);
+            var fill = document.getElementById('progress-fill');
+            fill.style.width = pct + '%';
+            fill.style.background = (pct >= 90) ? '#4CAF50' : '#1976D2';
+          }
+          function onPlayerStateChange(event) {
+            if (event.data == YT.PlayerState.PLAYING) {
+              progressInterval = setInterval(function() {
+                var ct = player.getCurrentTime();
+                var dur = player.getDuration();
+                if (dur > 0) {
+                  FocusBridge.updateProgress('${videoId}', ct, dur);
+                  updateProgressBar(ct / dur);
+                }
+              }, 5000);
+            } else {
+              clearInterval(progressInterval);
+              var ct = player.getCurrentTime();
+              var dur = player.getDuration();
+              if (dur > 0) {
+                FocusBridge.updateProgress('${videoId}', ct, dur);
+                updateProgressBar(ct / dur);
+              }
+            }
+          }
           fetch('https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}')
             .then(function(r) { return r.json(); })
             .then(function(data) {
@@ -1285,9 +1391,11 @@ currentEmbedVideoId = null
             val arrowView: TextView = view.findViewById(android.R.id.summary)
         }
 
-        class EntryViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-            val textView: TextView = view.findViewById(android.R.id.text1)
-            val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
+        class EntryViewHolder(val wrapper: View) : RecyclerView.ViewHolder(wrapper) {
+            val textView: TextView = wrapper.findViewById(android.R.id.text1)
+            val deleteButton: ImageButton = wrapper.findViewById(android.R.id.button1)
+            val progressTrack: View = wrapper.findViewWithTag("progressTrack")
+            val progressFill: View = wrapper.findViewWithTag("progressFill")
         }
 
         override fun getItemViewType(position: Int): Int {
@@ -1343,11 +1451,19 @@ currentEmbedVideoId = null
                     FolderViewHolder(layout)
                 }
                 else -> {
-                    val layout = LinearLayout(parent.context).apply {
-                        orientation = LinearLayout.HORIZONTAL
+                    val dp = parent.context.resources.displayMetrics.density
+                    val wrapper = LinearLayout(parent.context).apply {
+                        orientation = LinearLayout.VERTICAL
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                    }
+                    val row = LinearLayout(parent.context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
                         )
                         setPadding(48, 24, 48, 24)
                         gravity = android.view.Gravity.CENTER_VERTICAL
@@ -1363,9 +1479,30 @@ currentEmbedVideoId = null
                         setBackgroundResource(android.R.color.transparent)
                         contentDescription = "Delete"
                     }
-                    layout.addView(text)
-                    layout.addView(deleteBtn)
-                    EntryViewHolder(layout)
+                    row.addView(text)
+                    row.addView(deleteBtn)
+                    wrapper.addView(row)
+
+                    val progressTrack = android.widget.FrameLayout(parent.context).apply {
+                        tag = "progressTrack"
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            (4 * dp).toInt()
+                        ).apply {
+                            marginStart = 48
+                            marginEnd = 48
+                        }
+                        setBackgroundColor(0xFF272727.toInt())
+                        visibility = View.GONE
+                    }
+                    val progressFill = View(parent.context).apply {
+                        tag = "progressFill"
+                        layoutParams = android.widget.FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT)
+                    }
+                    progressTrack.addView(progressFill)
+                    wrapper.addView(progressTrack)
+
+                    EntryViewHolder(wrapper)
                 }
             }
         }
@@ -1395,6 +1532,27 @@ currentEmbedVideoId = null
                         true
                     }
                     vh.deleteButton.setOnClickListener { onEntryDelete(item.entry) }
+
+                    val videoId = VideoProgressManager.extractVideoId(item.entry.url)
+                    if (videoId != null) {
+                        val progress = VideoProgressManager.getProgress(vh.itemView.context, videoId)
+                        if (progress != null && progress.isStarted && progress.duration > 0) {
+                            vh.progressTrack.visibility = View.VISIBLE
+                            val color = if (progress.isFinished) 0xFF4CAF50.toInt() else 0xFF1976D2.toInt()
+                            vh.progressFill.setBackgroundColor(color)
+                            vh.progressTrack.post {
+                                val trackWidth = vh.progressTrack.width
+                                val fillWidth = (trackWidth * progress.percentage).toInt()
+                                vh.progressFill.layoutParams = vh.progressFill.layoutParams.apply {
+                                    width = fillWidth
+                                }
+                            }
+                        } else {
+                            vh.progressTrack.visibility = View.GONE
+                        }
+                    } else {
+                        vh.progressTrack.visibility = View.GONE
+                    }
                 }
             }
         }
