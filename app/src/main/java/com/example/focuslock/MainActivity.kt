@@ -218,7 +218,10 @@ class MainActivity : AppCompatActivity() {
                 if (url == "about:blank") {
                     view?.clearHistory()
                 } else {
-                    url?.let { binding.urlBar.setText(it) }
+                    url?.let {
+                        binding.urlBar.setText(it)
+                        updateDesktopToggleVisibility(it)
+                    }
                 }
             }
 
@@ -227,6 +230,7 @@ class MainActivity : AppCompatActivity() {
                 if (currentEmbedVideoId != null) return
 
                 if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+                    updateDesktopToggleVisibility(url)
                     if (isYouTubeShorts(url)) {
                         view?.post {
                             showHome()
@@ -396,6 +400,11 @@ class MainActivity : AppCompatActivity() {
         settings.loadWithOverviewMode = useDesktop
     }
 
+    private fun updateDesktopToggleVisibility(url: String?) {
+        val locked = url != null && requiresAutoDesktop(url)
+        binding.btnDesktopMode.visibility = if (locked) View.GONE else View.VISIBLE
+    }
+
     private fun updateDesktopModeIcon() {
         if (desktopMode) {
             val color = android.R.attr.colorPrimary
@@ -482,6 +491,7 @@ currentEmbedVideoId = null
         isSearchMode = false
         binding.searchResultsList.visibility = View.GONE
         refreshHomeList()
+        updateDesktopToggleVisibility(null)
     }
 
     private fun showWebView() {
