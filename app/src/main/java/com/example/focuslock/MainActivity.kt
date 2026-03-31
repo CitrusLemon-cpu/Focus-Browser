@@ -625,26 +625,55 @@ currentEmbedVideoId = null
         } else {
             val lockInAncestorId = if (currentFolderId != null)
                 WhitelistManager.getEffectiveLockInFolderId(this, currentFolderId!!) else null
-            val activeLockInSession = if (lockInAncestorId != null)
-                WhitelistManager.getLockInSession(this, lockInAncestorId) else null
+            val rootActiveLockIn = if (currentFolderId == null) {
+                WhitelistManager.getSubfolders(this, null)
+                    .find { WhitelistManager.isLockInActive(this, it.id) }
+                    ?.let { WhitelistManager.getEffectiveLockInFolderId(this, it.id) }
+            } else null
+            val activeLockInId = lockInAncestorId ?: rootActiveLockIn
+            val lockInSession = if (activeLockInId != null)
+                WhitelistManager.getLockInSession(this, activeLockInId) else null
 
-            if (activeLockInSession != null) {
-                val lockedUrl = activeLockInSession.first!!
-                val allEntries = getAllEntriesInFolderRecursive(lockInAncestorId)
-                val lockedEntry = allEntries.find {
-                    WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(lockedUrl)
+            if (lockInSession != null) {
+                val lockedUrl = lockInSession.first!!
+                val isAtLockInRoot = (currentFolderId == activeLockInId) ||
+                    (currentFolderId == null && rootActiveLockIn != null)
+
+                if (isAtLockInRoot) {
+                    val allEntries = getAllEntriesInFolderRecursive(activeLockInId)
+                    val lockedEntry = allEntries.find {
+                        WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(lockedUrl)
+                    }
+                    if (lockedEntry != null) {
+                        items.add(HomeItem.EntryItem(lockedEntry, isLockedOut = false, isIndentedLockIn = true))
+                    }
                 }
-                if (lockedEntry != null) {
-                    items.add(HomeItem.EntryItem(lockedEntry, isLockedOut = false))
-                }
-                if (showHiddenItems) {
-                    val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
-                    for (folder in subfolders) {
+
+                val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
+                if (currentFolderId == null) {
+                    val curated = subfolders.filter { it.isCurated }.sortedBy { it.sortOrder }
+                    val regular = subfolders.filter { !it.isCurated }.sortedBy { it.sortOrder }
+                    for (folder in curated) {
+                        if (!showHiddenItems && folder.hidden) continue
                         items.add(HomeItem.FolderItem(folder))
                     }
-                    val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
-                    for (entry in entries) {
-                        if (lockedEntry != null && entry.url == lockedEntry.url && entry.folderId == lockedEntry.folderId) continue
+                    for (folder in regular) {
+                        if (!showHiddenItems && folder.hidden) continue
+                        items.add(HomeItem.FolderItem(folder))
+                    }
+                } else {
+                    for (folder in subfolders) {
+                        if (!showHiddenItems && folder.hidden) continue
+                        items.add(HomeItem.FolderItem(folder))
+                    }
+                }
+
+                val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
+                for (entry in entries) {
+                    val isLocked = WhitelistManager.normalizeUrl(entry.url) == WhitelistManager.normalizeUrl(lockedUrl)
+                    if (isLocked) {
+                        items.add(HomeItem.EntryItem(entry, isLockedOut = false))
+                    } else if (showHiddenItems) {
                         items.add(HomeItem.EntryItem(entry, isLockedOut = true))
                     }
                 }
@@ -659,23 +688,7 @@ currentEmbedVideoId = null
                     }
                     for (folder in regular) {
                         if (!showHiddenItems && folder.hidden) continue
-                        val effectiveId = WhitelistManager.getEffectiveLockInFolderId(this, folder.id)
-                        val session = if (effectiveId != null) WhitelistManager.getLockInSession(this, effectiveId) else null
-                        if (session != null) {
-                            val lockedUrl = session.first!!
-                            val allEntries = getAllEntriesInFolderRecursive(effectiveId)
-                            val lockedEntry = allEntries.find {
-                                WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(lockedUrl)
-                            }
-                            if (lockedEntry != null) {
-                                items.add(HomeItem.EntryItem(lockedEntry))
-                            }
-                            if (showHiddenItems) {
-                                items.add(HomeItem.FolderItem(folder))
-                            }
-                        } else {
-                            items.add(HomeItem.FolderItem(folder))
-                        }
+                        items.add(HomeItem.FolderItem(folder))
                     }
                 } else {
                     for (folder in subfolders) {
@@ -1994,7 +2007,7 @@ currentEmbedVideoId = null
     }
     private sealed class HomeItem {
         data class FolderItem(val folder: Folder) : HomeItem()
-        data class EntryItem(val entry: WhitelistEntry, val isLockedOut: Boolean = false) : HomeItem()
+        data class EntryItem(val entry: WhitelistEntry, val isLockedOut: Boolean = false, val isIndentedLockIn: Boolean = false) : HomeItem()
     }
 
     private class HomeAdapter(
@@ -2226,7 +2239,15 @@ currentEmbedVideoId = null
                 }
                 is HomeItem.EntryItem -> {
                     val vh = holder as EntryViewHolder
-                    vh.textView.text = item.entry.name
+                    if (item.isIndentedLockIn) {
+                        vh.textView.text = "\u25B8 ${item.entry.name}"
+                        val row = vh.textView.parent as? LinearLayout
+                        row?.setPadding(96, 24, 48, 24)
+                    } else {
+                        vh.textView.text = item.entry.name
+                        val row = vh.textView.parent as? LinearLayout
+                        row?.setPadding(48, 24, 48, 24)
+                    }
                     val entryAlpha = if (item.isLockedOut) 0.5f else if (item.entry.hidden) 0.5f else 1.0f
                     vh.itemView.alpha = entryAlpha
                     vh.itemView.setOnClickListener { onEntryClick(item.entry) }
