@@ -1,0 +1,7 @@
+com.example.focuslock.app-pngs-0 /home/Focus-Browser/app/build/generated/res/pngs/debug
+com.example.focuslock.app-updated_navigation_xml-1 /home/Focus-Browser/app/build/generated/updated_navigation_xml/debug
+com.example.focuslock.app-packageDebugResources-2 /home/Focus-Browser/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.example.focuslock.app-packageDebugResources-3 /home/Focus-Browser/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.example.focuslock.app-debug-4 /home/Focus-Browser/app/build/intermediates/merged_res/debug/mergeDebugResources
+com.example.focuslock.app-debug-5 /home/Focus-Browser/app/src/debug/res
+com.example.focuslock.app-main-6 /home/Focus-Browser/app/src/main/res
