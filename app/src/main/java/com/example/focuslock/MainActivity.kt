@@ -557,6 +557,16 @@ currentEmbedVideoId = null
         binding.fabNewFolder.visibility = View.GONE
     }
 
+    private fun getAllEntriesInFolderRecursive(folderId: String?): List<WhitelistEntry> {
+        val result = mutableListOf<WhitelistEntry>()
+        result.addAll(WhitelistManager.getEntriesInFolder(this, folderId))
+        val subfolders = WhitelistManager.getSubfolders(this, folderId)
+        for (sub in subfolders) {
+            result.addAll(getAllEntriesInFolderRecursive(sub.id))
+        }
+        return result
+    }
+
     private fun buildItemList(): List<HomeItem> {
         val items = mutableListOf<HomeItem>()
         if (activeFilterTag != null) {
@@ -566,65 +576,71 @@ currentEmbedVideoId = null
                 items.add(HomeItem.EntryItem(entry))
             }
         } else {
-            val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
-            val allWhitelist = WhitelistManager.getWhitelist(this)
-            if (currentFolderId == null) {
-                val curated = subfolders.filter { it.isCurated }.sortedBy { it.sortOrder }
-                val regular = subfolders.filter { !it.isCurated }.sortedBy { it.sortOrder }
-                for (folder in curated) {
-                    if (!showHiddenItems && folder.hidden) continue
-                    items.add(HomeItem.FolderItem(folder))
+            val lockInAncestorId = if (currentFolderId != null)
+                WhitelistManager.getEffectiveLockInFolderId(this, currentFolderId!!) else null
+            val activeLockInSession = if (lockInAncestorId != null)
+                WhitelistManager.getLockInSession(this, lockInAncestorId) else null
+
+            if (activeLockInSession != null) {
+                val lockedUrl = activeLockInSession.first!!
+                val allEntries = getAllEntriesInFolderRecursive(lockInAncestorId)
+                val lockedEntry = allEntries.find {
+                    WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(lockedUrl)
                 }
-                for (folder in regular) {
-                    if (!showHiddenItems && folder.hidden) continue
-                    val effectiveId = WhitelistManager.getEffectiveLockInFolderId(this, folder.id)
-                    val session = if (effectiveId != null) WhitelistManager.getLockInSession(this, effectiveId) else null
-                    if (session != null) {
-                        val lockedUrl = session.first!!
-                        val lockedEntry = allWhitelist.find {
-                            WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(lockedUrl)
-                        }
-                        if (lockedEntry != null) {
-                            items.add(HomeItem.EntryItem(lockedEntry))
-                        }
-                        if (showHiddenItems) {
-                            items.add(HomeItem.FolderItem(folder))
-                        }
-                    } else {
+                if (lockedEntry != null) {
+                    items.add(HomeItem.EntryItem(lockedEntry, isLockedOut = false))
+                }
+                if (showHiddenItems) {
+                    val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
+                    for (folder in subfolders) {
                         items.add(HomeItem.FolderItem(folder))
+                    }
+                    val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
+                    for (entry in entries) {
+                        if (lockedEntry != null && entry.url == lockedEntry.url && entry.folderId == lockedEntry.folderId) continue
+                        items.add(HomeItem.EntryItem(entry, isLockedOut = true))
                     }
                 }
             } else {
-                for (folder in subfolders) {
-                    if (!showHiddenItems && folder.hidden) continue
-                    val effectiveId = WhitelistManager.getEffectiveLockInFolderId(this, folder.id)
-                    val session = if (effectiveId != null) WhitelistManager.getLockInSession(this, effectiveId) else null
-                    if (session != null) {
-                        val lockedUrl = session.first!!
-                        val lockedEntry = allWhitelist.find {
-                            WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(lockedUrl)
-                        }
-                        if (lockedEntry != null) {
-                            items.add(HomeItem.EntryItem(lockedEntry))
-                        }
-                        if (showHiddenItems) {
+                val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
+                if (currentFolderId == null) {
+                    val curated = subfolders.filter { it.isCurated }.sortedBy { it.sortOrder }
+                    val regular = subfolders.filter { !it.isCurated }.sortedBy { it.sortOrder }
+                    for (folder in curated) {
+                        if (!showHiddenItems && folder.hidden) continue
+                        items.add(HomeItem.FolderItem(folder))
+                    }
+                    for (folder in regular) {
+                        if (!showHiddenItems && folder.hidden) continue
+                        val effectiveId = WhitelistManager.getEffectiveLockInFolderId(this, folder.id)
+                        val session = if (effectiveId != null) WhitelistManager.getLockInSession(this, effectiveId) else null
+                        if (session != null) {
+                            val lockedUrl = session.first!!
+                            val allEntries = getAllEntriesInFolderRecursive(effectiveId)
+                            val lockedEntry = allEntries.find {
+                                WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(lockedUrl)
+                            }
+                            if (lockedEntry != null) {
+                                items.add(HomeItem.EntryItem(lockedEntry))
+                            }
+                            if (showHiddenItems) {
+                                items.add(HomeItem.FolderItem(folder))
+                            }
+                        } else {
                             items.add(HomeItem.FolderItem(folder))
                         }
-                    } else {
+                    }
+                } else {
+                    for (folder in subfolders) {
+                        if (!showHiddenItems && folder.hidden) continue
                         items.add(HomeItem.FolderItem(folder))
                     }
                 }
-            }
-            val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
-            val lockInFolderId = if (currentFolderId != null)
-                WhitelistManager.getEffectiveLockInFolderId(this, currentFolderId!!) else null
-            val lockInSession = if (lockInFolderId != null)
-                WhitelistManager.getLockInSession(this, lockInFolderId) else null
-            for (entry in entries) {
-                val isLockedOut = lockInSession != null &&
-                    WhitelistManager.normalizeUrl(entry.url) != WhitelistManager.normalizeUrl(lockInSession.first!!)
-                if (!showHiddenItems && (entry.hidden || isLockedOut)) continue
-                items.add(HomeItem.EntryItem(entry, isLockedOut = isLockedOut))
+                val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
+                for (entry in entries) {
+                    if (!showHiddenItems && entry.hidden) continue
+                    items.add(HomeItem.EntryItem(entry))
+                }
             }
         }
 
