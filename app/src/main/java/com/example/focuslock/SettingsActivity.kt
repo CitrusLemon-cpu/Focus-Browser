@@ -973,6 +973,39 @@ class SettingsActivity : AppCompatActivity() {
         hiddenRow.addView(hiddenSwitch)
         layout.addView(hiddenRow)
 
+        val clearDataBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Clear Site Data"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 24 }
+        }
+        layout.addView(clearDataBtn)
+
+        clearDataBtn.setOnClickListener {
+            val rawUrl = entry.url.substringBefore("/")
+            val siteUrl = "https://$rawUrl"
+
+            val cookieMgr = android.webkit.CookieManager.getInstance()
+            val cookies = cookieMgr.getCookie(siteUrl)
+            if (!cookies.isNullOrEmpty()) {
+                cookies.split(";").forEach { cookie ->
+                    val name = cookie.trim().substringBefore("=")
+                    if (name.isNotEmpty()) {
+                        cookieMgr.setCookie(siteUrl, "$name=; Max-Age=0; path=/")
+                        cookieMgr.setCookie(".$rawUrl", "$name=; Max-Age=0; path=/")
+                    }
+                }
+            }
+            cookieMgr.flush()
+
+            android.webkit.WebStorage.getInstance().deleteOrigin(siteUrl)
+            android.webkit.WebStorage.getInstance().deleteOrigin("https://www.$rawUrl")
+
+            android.widget.Toast.makeText(this, "Site data cleared", android.widget.Toast.LENGTH_SHORT).show()
+        }
+
+        var descInput: EditText? = null
         val entryVideoId = VideoProgressManager.extractVideoId(entry.url)
         if (entryVideoId != null) {
             val resetBtn = com.google.android.material.button.MaterialButton(this).apply {
@@ -989,6 +1022,23 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
             layout.addView(resetBtn)
+
+            val descLabel = TextView(this).apply {
+                text = "Notes / Description"
+                textSize = 12f
+                setTextColor(android.graphics.Color.GRAY)
+                setPadding(0, 24, 0, 8)
+            }
+            layout.addView(descLabel)
+
+            descInput = EditText(this).apply {
+                hint = "Add a note about this video..."
+                setText(entry.description ?: "")
+                minLines = 2
+                maxLines = 5
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            }
+            layout.addView(descInput)
         }
 
         val curatedFolders = WhitelistManager.getCuratedFolders(this)
@@ -1050,6 +1100,7 @@ class SettingsActivity : AppCompatActivity() {
                             WhitelistManager.moveEntryToFolder(this@SettingsActivity, urlToUse, selectedFolderId)
                         }
                         WhitelistManager.setEntryHidden(this@SettingsActivity, urlToUse, hiddenSwitch.isChecked)
+                        descInput?.let { WhitelistManager.setEntryDescription(this@SettingsActivity, urlToUse, it.text.toString().trim()) }
                         refreshList()
                         dismiss()
                     }

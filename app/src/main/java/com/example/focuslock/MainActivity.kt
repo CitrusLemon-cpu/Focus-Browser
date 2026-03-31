@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var isSearchMode = false
     private var showHiddenItems = false
     private var currentEmbedVideoId: String? = null
+    private var currentEmbedEntryUrl: String? = null
     private var invidiousRedirectEnabled = false
     private var invidiousInstance = "yewtu.be"
     private var hideFinishedVideos = false
@@ -112,7 +113,24 @@ class MainActivity : AppCompatActivity() {
             fun updateProgress(videoId: String, currentTime: Double, duration: Double) {
                 VideoProgressManager.updateProgress(this@MainActivity, videoId, currentTime, duration)
             }
+
+            @android.webkit.JavascriptInterface
+            fun onEditDescriptionTapped(currentDesc: String) {
+                runOnUiThread {
+                    showEmbedDescriptionEditDialog(currentDesc)
+                }
+            }
         }, "FocusBridge")
+
+        binding.swipeRefreshLayout.setOnRefreshListener {
+            if (currentEmbedVideoId != null) {
+                binding.swipeRefreshLayout.isRefreshing = false
+            } else if (binding.webView.visibility == View.VISIBLE) {
+                binding.webView.reload()
+            } else {
+                binding.swipeRefreshLayout.isRefreshing = false
+            }
+        }
 
         binding.switchShowHidden.isChecked = false
         binding.switchShowHidden.setOnCheckedChangeListener { _, isChecked ->
@@ -294,6 +312,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                binding.swipeRefreshLayout.isRefreshing = false
                 if (currentEmbedVideoId != null) return
 
                 if (url == "about:blank") {
@@ -580,12 +599,14 @@ currentEmbedVideoId = null
 
     private fun showHome() {
         currentEmbedVideoId = null
+        currentEmbedEntryUrl = null
         binding.webView.stopLoading()
         binding.webView.loadUrl("about:blank")
         binding.homeScreen.visibility = View.VISIBLE
         binding.webView.visibility = View.GONE
         binding.fab.visibility = View.VISIBLE
         binding.fabNewFolder.visibility = View.VISIBLE
+        binding.swipeRefreshLayout.isEnabled = false
         binding.urlBar.setText("")
         binding.urlBar.clearFocus()
         folderStack.clear()
@@ -602,6 +623,7 @@ currentEmbedVideoId = null
         binding.webView.visibility = View.VISIBLE
         binding.fab.visibility = View.GONE
         binding.fabNewFolder.visibility = View.GONE
+        binding.swipeRefreshLayout.isEnabled = true
     }
 
     private fun getAllEntriesInFolderRecursive(folderId: String?): List<WhitelistEntry> {
@@ -1644,6 +1666,39 @@ currentEmbedVideoId = null
         hiddenRow.addView(hiddenSwitch)
         layout.addView(hiddenRow)
 
+        val clearDataBtn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Clear Site Data"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 24 }
+        }
+        layout.addView(clearDataBtn)
+
+        clearDataBtn.setOnClickListener {
+            val rawUrl = entry.url.substringBefore("/")
+            val siteUrl = "https://$rawUrl"
+
+            val cookieMgr = android.webkit.CookieManager.getInstance()
+            val cookies = cookieMgr.getCookie(siteUrl)
+            if (!cookies.isNullOrEmpty()) {
+                cookies.split(";").forEach { cookie ->
+                    val name = cookie.trim().substringBefore("=")
+                    if (name.isNotEmpty()) {
+                        cookieMgr.setCookie(siteUrl, "$name=; Max-Age=0; path=/")
+                        cookieMgr.setCookie(".$rawUrl", "$name=; Max-Age=0; path=/")
+                    }
+                }
+            }
+            cookieMgr.flush()
+
+            android.webkit.WebStorage.getInstance().deleteOrigin(siteUrl)
+            android.webkit.WebStorage.getInstance().deleteOrigin("https://www.$rawUrl")
+
+            android.widget.Toast.makeText(this, "Site data cleared", android.widget.Toast.LENGTH_SHORT).show()
+        }
+
+        var descInput: EditText? = null
         val entryVideoId = VideoProgressManager.extractVideoId(entry.url)
         if (entryVideoId != null) {
             val resetBtn = com.google.android.material.button.MaterialButton(this).apply {
@@ -1660,6 +1715,23 @@ currentEmbedVideoId = null
                 }
             }
             layout.addView(resetBtn)
+
+            val descLabel = TextView(this).apply {
+                text = "Notes / Description"
+                textSize = 12f
+                setTextColor(android.graphics.Color.GRAY)
+                setPadding(0, 24, 0, 8)
+            }
+            layout.addView(descLabel)
+
+            descInput = EditText(this).apply {
+                hint = "Add a note about this video..."
+                setText(entry.description ?: "")
+                minLines = 2
+                maxLines = 5
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            }
+            layout.addView(descInput)
         }
 
         val curatedFolders = WhitelistManager.getCuratedFolders(this)
@@ -1703,6 +1775,7 @@ currentEmbedVideoId = null
                 }
                 WhitelistManager.setEntryTags(this, entry.url, currentTags)
                 WhitelistManager.setEntryHidden(this, entry.url, hiddenSwitch.isChecked)
+                descInput?.let { WhitelistManager.setEntryDescription(this, entry.url, it.text.toString().trim()) }
                 refreshHomeList()
             }
             .setNegativeButton("Cancel", null)
@@ -1884,7 +1957,13 @@ currentEmbedVideoId = null
         return VideoProgressManager.extractVideoId(url)
     }
 
-    private fun buildEmbedHtml(videoId: String, title: String, tags: List<String>): String {
+    private fun buildEmbedHtml(
+        videoId: String,
+        title: String,
+        tags: List<String>,
+        description: String? = null,
+        showDescriptionSection: Boolean = false
+    ): String {
         val tagsHtml = if (tags.isNotEmpty()) {
             tags.joinToString(" ") { "<span class=\"tag\">${it.replace("<", "&lt;")}</span>" }
         } else ""
@@ -1892,6 +1971,20 @@ currentEmbedVideoId = null
         val existingProgress = VideoProgressManager.getProgress(this, videoId)
         val initialPct = existingProgress?.percentage?.times(100)?.toInt() ?: 0
         val initialColor = if (existingProgress != null && existingProgress.isFinished) "#4CAF50" else "#1976D2"
+
+        val savedTime = existingProgress?.let {
+            if (it.isStarted && !it.isFinished) it.currentTime
+            else 0.0
+        } ?: 0.0
+
+        val descHtml = if (showDescriptionSection) """
+        <div class="desc-section" onclick="FocusBridge.onEditDescriptionTapped(document.getElementById('descText').innerText)" style="cursor:pointer">
+          <div id="descText" class="${if (!description.isNullOrEmpty()) "desc-text" else "desc-placeholder"}">
+            ${if (!description.isNullOrEmpty()) description.replace("<", "&lt;").replace("\n", "<br>") else "Tap to add a note..."}
+          </div>
+          <div class="desc-edit-hint">&#9999; tap to edit</div>
+        </div>
+        """ else ""
 
         return """
         <!DOCTYPE html>
@@ -1908,6 +2001,10 @@ currentEmbedVideoId = null
           .video-container { width: 100%; aspect-ratio: 16/9; background: #000; }
           #progress-track { width: 100%; height: 4px; background: #272727; }
           #progress-fill { height: 100%; width: ${initialPct}%; background: ${initialColor}; transition: width 0.3s ease; }
+          .desc-section { padding: 12px 16px; }
+          .desc-text { color: #ccc; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+          .desc-placeholder { color: #555; font-size: 14px; font-style: italic; }
+          .desc-edit-hint { color: #555; font-size: 11px; margin-top: 4px; }
         </style>
         </head>
         <body>
@@ -1915,10 +2012,12 @@ currentEmbedVideoId = null
         ${if (tags.isNotEmpty()) "<div class=\"tags\">${tagsHtml}</div>" else ""}
         <div class="video-container"><div id="player"></div></div>
         <div id="progress-track"><div id="progress-fill"></div></div>
+        ${descHtml}
         <script src="https://www.youtube.com/iframe_api"></script>
         <script>
           var player;
           var progressInterval;
+          var savedTime = ${savedTime};
           function onYouTubeIframeAPIReady() {
             player = new YT.Player('player', {
               width: '100%',
@@ -1932,6 +2031,9 @@ currentEmbedVideoId = null
             });
           }
           function onPlayerReady(event) {
+            if (savedTime > 5) {
+              event.target.seekTo(savedTime, true);
+            }
             event.target.playVideo();
           }
           function updateProgressBar(ratio) {
@@ -1967,10 +2069,48 @@ currentEmbedVideoId = null
               else document.getElementById('title').textContent = '';
             })
             .catch(function() { document.getElementById('title').textContent = ''; });
+          function updateDescriptionText(text) {
+            var el = document.getElementById('descText');
+            if (!el) return;
+            if (text && text.trim()) {
+              el.className = 'desc-text';
+              el.innerHTML = text.replace(/</g, '&lt;').replace(/\n/g, '<br>');
+            } else {
+              el.className = 'desc-placeholder';
+              el.innerText = 'Tap to add a note...';
+            }
+          }
         </script>
         </body>
         </html>
         """.trimIndent()
+    }
+
+    private fun showEmbedDescriptionEditDialog(currentDesc: String) {
+        val entryUrl = currentEmbedEntryUrl ?: return
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 0)
+        }
+        val input = EditText(this).apply {
+            setText(currentDesc)
+            hint = "Add a note about this video..."
+            minLines = 3
+            maxLines = 8
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        layout.addView(input)
+        AlertDialog.Builder(this)
+            .setTitle("Edit Description")
+            .setView(layout)
+            .setPositiveButton("Save") { _, _ ->
+                val newDesc = input.text.toString().trim()
+                WhitelistManager.setEntryDescription(this, entryUrl, newDesc)
+                val escaped = newDesc.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+                binding.webView.evaluateJavascript("updateDescriptionText('$escaped')", null)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun loadYouTubeEmbed(videoId: String, originalUrl: String) {
@@ -1991,7 +2131,12 @@ currentEmbedVideoId = null
         }
         val tags = matchingEntry?.tags ?: emptyList()
 
-        val html = buildEmbedHtml(videoId, "Loading...", tags)
+        val isSpecificEntry = matchingEntry != null &&
+            VideoProgressManager.extractVideoId("https://${matchingEntry.url}") == videoId
+        val entryDescription = if (isSpecificEntry) matchingEntry?.description else null
+        currentEmbedEntryUrl = if (isSpecificEntry) matchingEntry?.url else null
+
+        val html = buildEmbedHtml(videoId, "Loading...", tags, entryDescription, isSpecificEntry)
         binding.webView.loadDataWithBaseURL("https://focus-embed.local/", html, "text/html", "UTF-8", null)
     }
 
