@@ -56,6 +56,24 @@ class SettingsActivity : AppCompatActivity() {
                 .setNegativeButton("Cancel", null)
                 .show()
         }
+
+        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+        binding.switchHideFinished.isChecked = prefs.getBoolean("hide_finished_videos", false)
+        binding.switchHideFinished.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("hide_finished_videos", isChecked).apply()
+        }
+
+        binding.btnResetProgress.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Reset Video Progress")
+                .setMessage("Reset all video watch progress? This cannot be undone.")
+                .setPositiveButton("Reset") { _, _ ->
+                    VideoProgressManager.resetAllProgress(this)
+                    Toast.makeText(this, "Video progress reset", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
     }
 
     private fun buildSettingsList(): List<SettingsItem> {
@@ -680,6 +698,24 @@ class SettingsActivity : AppCompatActivity() {
         hiddenRow.addView(hiddenLabel)
         hiddenRow.addView(hiddenSwitch)
         layout.addView(hiddenRow)
+
+        val entryVideoId = VideoProgressManager.extractVideoId(entry.url)
+        if (entryVideoId != null) {
+            val resetBtn = com.google.android.material.button.MaterialButton(this).apply {
+                text = "Reset Video Progress"
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 24
+                }
+                setOnClickListener {
+                    VideoProgressManager.resetProgress(this@SettingsActivity, entryVideoId)
+                    Toast.makeText(this@SettingsActivity, "Video progress reset", Toast.LENGTH_SHORT).show()
+                }
+            }
+            layout.addView(resetBtn)
+        }
 
         val scrollView = android.widget.ScrollView(this).apply { addView(layout) }
 
