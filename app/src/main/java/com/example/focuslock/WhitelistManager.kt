@@ -3,7 +3,7 @@ package com.example.focuslock
 import android.content.Context
 import org.json.JSONArray
 
-data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null, val sortOrder: Int = 0, val tags: List<String> = emptyList(), val hidden: Boolean = false, val sourceFolderId: String? = null)
+data class WhitelistEntry(val url: String, val name: String, val folderId: String? = null, val sortOrder: Int = 0, val tags: List<String> = emptyList(), val hidden: Boolean = false, val sourceFolderId: String? = null, val description: String? = null)
 
 data class Folder(
     val id: String,
@@ -51,7 +51,8 @@ object WhitelistManager {
                     sortOrder = element.optInt("sortOrder", 0),
                     tags = tags,
                     hidden = hidden,
-                    sourceFolderId = element.optString("sourceFolderId", null).takeIf { it?.isNotEmpty() == true }
+                    sourceFolderId = element.optString("sourceFolderId", null).takeIf { it?.isNotEmpty() == true },
+                    description = element.optString("description", null).takeIf { it?.isNotEmpty() == true }
                 ))
             } else {
                 val raw = element.toString()
@@ -283,6 +284,7 @@ object WhitelistManager {
             }
             if (entry.hidden) obj.put("hidden", true)
             if (entry.sourceFolderId != null) obj.put("sourceFolderId", entry.sourceFolderId)
+            if (entry.description != null) obj.put("description", entry.description)
             array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -336,6 +338,15 @@ object WhitelistManager {
         val index = list.indexOfFirst { it.url == url }
         if (index != -1) {
             list[index] = list[index].copy(hidden = hidden)
+            saveWhitelist(context, list)
+        }
+    }
+
+    fun setEntryDescription(context: Context, url: String, description: String?) {
+        val list = getWhitelist(context).toMutableList()
+        val index = list.indexOfFirst { it.url == url }
+        if (index != -1) {
+            list[index] = list[index].copy(description = description?.takeIf { it.isNotEmpty() })
             saveWhitelist(context, list)
         }
     }

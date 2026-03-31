@@ -62,10 +62,17 @@
                 android:layout_height="0dp"
                 android:layout_weight="1">
 
-                <WebView
-                    android:id="@+id/webView"
+                <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                    android:id="@+id/swipeRefreshLayout"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
+                    android:layout_height="match_parent">
+
+                    <WebView
+                        android:id="@+id/webView"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+
+                </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
                 <!-- Home screen overlay -->
                 <LinearLayout
@@ -362,16 +369,6 @@
                     android:layout_height="wrap_content" />
             </LinearLayout>
 
-            <!-- Reset Video Progress -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnResetProgress"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="8dp"
-                android:text="Reset Video Progress"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
             <!-- Show Tags -->
             <LinearLayout
                 android:layout_width="match_parent"
@@ -476,6 +473,16 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content" />
             </LinearLayout>
+
+            <!-- Reset Video Progress -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnResetProgress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp"
+                android:text="Reset Video Progress"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
         </LinearLayout>
 
