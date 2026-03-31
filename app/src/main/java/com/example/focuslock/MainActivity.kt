@@ -639,13 +639,14 @@ currentEmbedVideoId = null
                 val isAtLockInRoot = (currentFolderId == activeLockInId) ||
                     (currentFolderId == null && rootActiveLockIn != null)
 
+                var indentedEntry: HomeItem.EntryItem? = null
                 if (isAtLockInRoot) {
                     val allEntries = getAllEntriesInFolderRecursive(activeLockInId)
                     val lockedEntry = allEntries.find {
                         WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(lockedUrl)
                     }
                     if (lockedEntry != null) {
-                        items.add(HomeItem.EntryItem(lockedEntry, isLockedOut = false, isIndentedLockIn = true))
+                        indentedEntry = HomeItem.EntryItem(lockedEntry, isLockedOut = false, isIndentedLockIn = true)
                     }
                 }
 
@@ -656,25 +657,49 @@ currentEmbedVideoId = null
                     for (folder in curated) {
                         if (!showHiddenItems && folder.hidden) continue
                         items.add(HomeItem.FolderItem(folder))
+                        if (indentedEntry != null && folder.id == activeLockInId) {
+                            items.add(indentedEntry)
+                            indentedEntry = null
+                        }
                     }
                     for (folder in regular) {
                         if (!showHiddenItems && folder.hidden) continue
                         items.add(HomeItem.FolderItem(folder))
+                        if (indentedEntry != null && folder.id == activeLockInId) {
+                            items.add(indentedEntry)
+                            indentedEntry = null
+                        }
                     }
                 } else {
                     for (folder in subfolders) {
                         if (!showHiddenItems && folder.hidden) continue
                         items.add(HomeItem.FolderItem(folder))
+                        if (indentedEntry != null && folder.id == activeLockInId) {
+                            items.add(indentedEntry)
+                            indentedEntry = null
+                        }
                     }
                 }
+                if (indentedEntry != null) {
+                    items.add(indentedEntry)
+                }
+
+                val currentInLockInHierarchy = currentFolderId != null &&
+                    (currentFolderId == activeLockInId ||
+                     WhitelistManager.getEffectiveLockInFolderId(this, currentFolderId!!) == activeLockInId)
 
                 val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
                 for (entry in entries) {
-                    val isLocked = WhitelistManager.normalizeUrl(entry.url) == WhitelistManager.normalizeUrl(lockedUrl)
-                    if (isLocked) {
-                        items.add(HomeItem.EntryItem(entry, isLockedOut = false))
-                    } else if (showHiddenItems) {
-                        items.add(HomeItem.EntryItem(entry, isLockedOut = true))
+                    if (currentInLockInHierarchy) {
+                        val isLocked = WhitelistManager.normalizeUrl(entry.url) == WhitelistManager.normalizeUrl(lockedUrl)
+                        if (isLocked) {
+                            items.add(HomeItem.EntryItem(entry, isLockedOut = false))
+                        } else if (showHiddenItems) {
+                            items.add(HomeItem.EntryItem(entry, isLockedOut = true))
+                        }
+                    } else {
+                        if (!showHiddenItems && entry.hidden) continue
+                        items.add(HomeItem.EntryItem(entry))
                     }
                 }
             } else {
