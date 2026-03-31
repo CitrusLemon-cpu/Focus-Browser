@@ -477,14 +477,25 @@ object WhitelistManager {
         return Pair(url, expires)
     }
 
+    fun getEffectiveLockInFolderId(context: Context, folderId: String): String? {
+        val allFolders = getFolders(context)
+        var currentId: String? = folderId
+        while (currentId != null) {
+            val folder = allFolders.find { it.id == currentId } ?: return null
+            if (folder.lockInEnabled) return currentId
+            currentId = folder.parentId
+        }
+        return null
+    }
+
     fun isLockInArmed(context: Context, folderId: String): Boolean {
-        val folder = getFolders(context).find { it.id == folderId } ?: return false
-        return folder.lockInEnabled && getLockInSession(context, folderId) == null
+        val effectiveId = getEffectiveLockInFolderId(context, folderId) ?: return false
+        return getLockInSession(context, effectiveId) == null
     }
 
     fun isLockInActive(context: Context, folderId: String): Boolean {
-        val folder = getFolders(context).find { it.id == folderId } ?: return false
-        return folder.lockInEnabled && getLockInSession(context, folderId) != null
+        val effectiveId = getEffectiveLockInFolderId(context, folderId) ?: return false
+        return getLockInSession(context, effectiveId) != null
     }
 
     fun setLockInEnabled(context: Context, folderId: String, enabled: Boolean, durationMinutes: Int = 30) {
@@ -613,9 +624,9 @@ object WhitelistManager {
             }
             if (!matches) continue
             if (entry.folderId == null) return false
-            val folder = getFolders(context).find { it.id == entry.folderId }
-            if (folder == null || !folder.lockInEnabled) return false
-            val session = getLockInSession(context, entry.folderId)
+            val effectiveId = getEffectiveLockInFolderId(context, entry.folderId)
+            if (effectiveId == null) return false
+            val session = getLockInSession(context, effectiveId)
             if (session == null) return false
             if (normalizeUrl(session.first!!) == normalizedEntry) return false
             anyBlocked = true
@@ -637,9 +648,9 @@ object WhitelistManager {
             }
             if (!matches) continue
             if (entry.folderId == null) return 0
-            val folder = getFolders(context).find { it.id == entry.folderId }
-            if (folder == null || !folder.lockInEnabled) return 0
-            val session = getLockInSession(context, entry.folderId) ?: return 0
+            val effectiveId = getEffectiveLockInFolderId(context, entry.folderId)
+            if (effectiveId == null) return 0
+            val session = getLockInSession(context, effectiveId) ?: return 0
             if (normalizeUrl(session.first!!) == normalizedEntry) return 0
             val remaining = (session.second - System.currentTimeMillis()).coerceAtLeast(0)
             if (remaining > maxRemaining) maxRemaining = remaining
