@@ -39,6 +39,9 @@ public final class ActivitySettingsBinding implements ViewBinding {
   public final MaterialButton btnClearData;
 
   @NonNull
+  public final MaterialButton btnCreateCurated;
+
+  @NonNull
   public final MaterialButton btnResetProgress;
 
   @NonNull
@@ -53,15 +56,16 @@ public final class ActivitySettingsBinding implements ViewBinding {
   private ActivitySettingsBinding(@NonNull LinearLayout rootView,
       @NonNull LinearLayout breadcrumbContainer, @NonNull HorizontalScrollView breadcrumbScroll,
       @NonNull MaterialButton btnAdd, @NonNull MaterialButton btnChangePassword,
-      @NonNull MaterialButton btnClearData, @NonNull MaterialButton btnResetProgress,
-      @NonNull RecyclerView recyclerView, @NonNull SwitchMaterial switchHideFinished,
-      @NonNull Toolbar toolbar) {
+      @NonNull MaterialButton btnClearData, @NonNull MaterialButton btnCreateCurated,
+      @NonNull MaterialButton btnResetProgress, @NonNull RecyclerView recyclerView,
+      @NonNull SwitchMaterial switchHideFinished, @NonNull Toolbar toolbar) {
     this.rootView = rootView;
     this.breadcrumbContainer = breadcrumbContainer;
     this.breadcrumbScroll = breadcrumbScroll;
     this.btnAdd = btnAdd;
     this.btnChangePassword = btnChangePassword;
     this.btnClearData = btnClearData;
+    this.btnCreateCurated = btnCreateCurated;
     this.btnResetProgress = btnResetProgress;
     this.recyclerView = recyclerView;
     this.switchHideFinished = switchHideFinished;
@@ -125,6 +129,12 @@ public final class ActivitySettingsBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.btnCreateCurated;
+      MaterialButton btnCreateCurated = ViewBindings.findChildViewById(rootView, id);
+      if (btnCreateCurated == null) {
+        break missingId;
+      }
+
       id = R.id.btnResetProgress;
       MaterialButton btnResetProgress = ViewBindings.findChildViewById(rootView, id);
       if (btnResetProgress == null) {
@@ -150,8 +160,8 @@ public final class ActivitySettingsBinding implements ViewBinding {
       }
 
       return new ActivitySettingsBinding((LinearLayout) rootView, breadcrumbContainer,
-          breadcrumbScroll, btnAdd, btnChangePassword, btnClearData, btnResetProgress, recyclerView,
-          switchHideFinished, toolbar);
+          breadcrumbScroll, btnAdd, btnChangePassword, btnClearData, btnCreateCurated,
+          btnResetProgress, recyclerView, switchHideFinished, toolbar);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

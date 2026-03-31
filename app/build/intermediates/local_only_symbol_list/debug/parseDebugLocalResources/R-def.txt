@@ -10,6 +10,7 @@ id breadcrumbScroll
 id btnAdd
 id btnChangePassword
 id btnClearData
+id btnCreateCurated
 id btnDesktopMode
 id btnHome
 id btnResetProgress
