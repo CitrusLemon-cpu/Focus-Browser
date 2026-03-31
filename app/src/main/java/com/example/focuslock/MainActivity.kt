@@ -585,8 +585,10 @@ currentEmbedVideoId = null
                 }
             }
             val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
-            val lockInSession = if (currentFolderId != null)
-                WhitelistManager.getLockInSession(this, currentFolderId!!) else null
+            val lockInFolderId = if (currentFolderId != null)
+                WhitelistManager.getEffectiveLockInFolderId(this, currentFolderId!!) else null
+            val lockInSession = if (lockInFolderId != null)
+                WhitelistManager.getLockInSession(this, lockInFolderId) else null
             for (entry in entries) {
                 val isLockedOut = lockInSession != null &&
                     WhitelistManager.normalizeUrl(entry.url) != WhitelistManager.normalizeUrl(lockInSession.first!!)
@@ -698,15 +700,19 @@ currentEmbedVideoId = null
                             // Exempt from lock-in — skip lock-in checks
                         } else if (currentFolder?.isCurated == true && !currentFolder.ignoreLockInMode) {
                             val originalFolderId = entry.sourceFolderId ?: entry.folderId
-                            val session = WhitelistManager.getLockInSession(this, originalFolderId!!)
-                            if (session != null && WhitelistManager.normalizeUrl(entry.url) != WhitelistManager.normalizeUrl(session.first!!)) {
-                                val remaining = session.second - System.currentTimeMillis()
-                                showLockInBlockedDialog(url, remaining)
-                                return@HomeAdapter
+                            val effectiveLockInId = WhitelistManager.getEffectiveLockInFolderId(this, originalFolderId!!)
+                            if (effectiveLockInId != null) {
+                                val session = WhitelistManager.getLockInSession(this, effectiveLockInId)
+                                if (session != null && WhitelistManager.normalizeUrl(entry.url) != WhitelistManager.normalizeUrl(session.first!!)) {
+                                    val remaining = session.second - System.currentTimeMillis()
+                                    showLockInBlockedDialog(url, remaining)
+                                    return@HomeAdapter
+                                }
                             }
                         } else {
                             val folderId = entry.folderId
-                            val session = WhitelistManager.getLockInSession(this, folderId)
+                            val lockInFolderId = WhitelistManager.getEffectiveLockInFolderId(this, folderId) ?: folderId
+                            val session = WhitelistManager.getLockInSession(this, lockInFolderId)
                             if (session != null) {
                                 val lockedUrl = session.first
                                 if (WhitelistManager.normalizeUrl(url) != WhitelistManager.normalizeUrl(lockedUrl!!)) {
@@ -715,12 +721,12 @@ currentEmbedVideoId = null
                                     return@HomeAdapter
                                 }
                             } else if (WhitelistManager.isLockInArmed(this, folderId)) {
-                                val folder = WhitelistManager.getFolders(this).find { it.id == folderId }
+                                val folder = WhitelistManager.getFolders(this).find { it.id == lockInFolderId }
                                 if (folder?.lockInWarningEnabled == true) {
-                                    showLockInWarningDialog(entry, url, folderId, folder.lockInDurationMinutes)
+                                    showLockInWarningDialog(entry, url, lockInFolderId, folder.lockInDurationMinutes)
                                     return@HomeAdapter
                                 } else {
-                                    WhitelistManager.startLockInSession(this, folderId, entry.url)
+                                    WhitelistManager.startLockInSession(this, lockInFolderId, entry.url)
                                     refreshHomeList()
                                 }
                             }
@@ -1038,7 +1044,9 @@ currentEmbedVideoId = null
         hiddenRow.addView(hiddenSwitch)
         layout.addView(hiddenRow)
 
-        if (WhitelistManager.isLockInArmed(this, folder.id) || WhitelistManager.isLockInActive(this, folder.id)) {
+        val effectiveLockInId = WhitelistManager.getEffectiveLockInFolderId(this, folder.id)
+        if (effectiveLockInId != null) {
+            val isInherited = effectiveLockInId != folder.id
             val lockInStatusLabel = TextView(this).apply {
                 text = "Lock-in Mode"
                 textSize = 12f
@@ -1047,19 +1055,21 @@ currentEmbedVideoId = null
             }
             layout.addView(lockInStatusLabel)
 
-            val session = WhitelistManager.getLockInSession(this, folder.id)
+            val session = WhitelistManager.getLockInSession(this, effectiveLockInId)
             if (session != null) {
                 val remaining = session.second - System.currentTimeMillis()
                 val mins = (remaining / 60000).coerceAtLeast(1)
+                val inheritedNote = if (isInherited) " (inherited from parent)" else ""
                 val statusText = TextView(this).apply {
-                    text = "\uD83D\uDD12 Active \u2014 locked for ${mins}m remaining"
+                    text = "\uD83D\uDD12 Active \u2014 locked for ${mins}m remaining$inheritedNote"
                     textSize = 14f
                     setPadding(0, 8, 0, 8)
                 }
                 layout.addView(statusText)
             } else {
+                val inheritedNote = if (isInherited) " (inherited from parent)" else ""
                 val statusText = TextView(this).apply {
-                    text = "\uD83D\uDD13 Armed \u2014 waiting for first tap"
+                    text = "\uD83D\uDD13 Armed \u2014 waiting for first tap$inheritedNote"
                     textSize = 14f
                     setPadding(0, 8, 0, 8)
                 }
@@ -1156,7 +1166,7 @@ currentEmbedVideoId = null
                 android.widget.Toast.makeText(this@MainActivity, "Folder blocked", android.widget.Toast.LENGTH_SHORT).show()
             }
             layout.findViewWithTag<MaterialButton>("lockInTurnOff")?.setOnClickListener {
-                showDisableLockInPasswordDialog(folder.id, dialog)
+                showDisableLockInPasswordDialog(effectiveLockInId ?: folder.id, dialog)
             }
             return
         }
@@ -1175,7 +1185,7 @@ currentEmbedVideoId = null
             .setNegativeButton("Cancel", null)
             .show()
         layout.findViewWithTag<MaterialButton>("lockInTurnOff")?.setOnClickListener {
-            showDisableLockInPasswordDialog(folder.id, mainDialog)
+            showDisableLockInPasswordDialog(effectiveLockInId ?: folder.id, mainDialog)
         }
     }
 
@@ -2011,8 +2021,9 @@ currentEmbedVideoId = null
                     val vh = holder as FolderViewHolder
                     val ctx = holder.itemView.context
                     val isBlocked = WhitelistManager.isFolderBlocked(ctx, item.folder.id)
-                    val lockInActive = WhitelistManager.isLockInActive(ctx, item.folder.id)
-                    val lockInArmed = WhitelistManager.isLockInArmed(ctx, item.folder.id)
+                    val effectiveLockInId = WhitelistManager.getEffectiveLockInFolderId(ctx, item.folder.id)
+                    val lockInActive = effectiveLockInId != null && WhitelistManager.getLockInSession(ctx, effectiveLockInId) != null
+                    val lockInArmed = effectiveLockInId != null && !lockInActive
                     if (isBlocked) {
                         val remaining = WhitelistManager.getFolderBlockTimeRemaining(ctx, item.folder.id)
                         val hrs = remaining / 3600000
@@ -2020,7 +2031,7 @@ currentEmbedVideoId = null
                         val timeStr = if (hrs > 0) "${hrs}h ${mins}m" else "${mins}m"
                         vh.textView.text = "\uD83D\uDD12 ${item.folder.name} ($timeStr)"
                     } else if (lockInActive) {
-                        val session = WhitelistManager.getLockInSession(ctx, item.folder.id)
+                        val session = WhitelistManager.getLockInSession(ctx, effectiveLockInId!!)
                         if (session != null) {
                             val remaining = session.second - System.currentTimeMillis()
                             val mins = (remaining / 60000).coerceAtLeast(1)
