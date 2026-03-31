@@ -10,21 +10,25 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
 import androidx.viewbinding.ViewBindings;
 import com.example.focuslock.R;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.switchmaterial.SwitchMaterial;
 import java.lang.NullPointerException;
 import java.lang.Override;
 import java.lang.String;
 
 public final class ActivityMainBinding implements ViewBinding {
   @NonNull
-  private final FrameLayout rootView;
+  private final DrawerLayout rootView;
 
   @NonNull
   public final LinearLayout breadcrumbContainer;
@@ -37,6 +41,12 @@ public final class ActivityMainBinding implements ViewBinding {
 
   @NonNull
   public final ImageButton btnHome;
+
+  @NonNull
+  public final LinearLayout drawerContent;
+
+  @NonNull
+  public final DrawerLayout drawerLayout;
 
   @NonNull
   public final TextView emptyMessage;
@@ -57,7 +67,28 @@ public final class ActivityMainBinding implements ViewBinding {
   public final LinearLayout homeScreen;
 
   @NonNull
+  public final LinearLayout invidiousInstanceContainer;
+
+  @NonNull
+  public final RadioGroup invidiousInstanceGroup;
+
+  @NonNull
+  public final RadioButton radioNadeko;
+
+  @NonNull
+  public final RadioButton radioYewtu;
+
+  @NonNull
   public final RecyclerView searchResultsList;
+
+  @NonNull
+  public final SwitchMaterial switchInvidiousRedirect;
+
+  @NonNull
+  public final SwitchMaterial switchShowHidden;
+
+  @NonNull
+  public final SwitchMaterial switchYoutubeEmbed;
 
   @NonNull
   public final EditText urlBar;
@@ -65,32 +96,46 @@ public final class ActivityMainBinding implements ViewBinding {
   @NonNull
   public final WebView webView;
 
-  private ActivityMainBinding(@NonNull FrameLayout rootView,
+  private ActivityMainBinding(@NonNull DrawerLayout rootView,
       @NonNull LinearLayout breadcrumbContainer, @NonNull HorizontalScrollView breadcrumbScroll,
       @NonNull ImageButton btnDesktopMode, @NonNull ImageButton btnHome,
+      @NonNull LinearLayout drawerContent, @NonNull DrawerLayout drawerLayout,
       @NonNull TextView emptyMessage, @NonNull FloatingActionButton fab,
       @NonNull FloatingActionButton fabNewFolder, @NonNull FrameLayout fullscreenContainer,
       @NonNull RecyclerView homeList, @NonNull LinearLayout homeScreen,
-      @NonNull RecyclerView searchResultsList, @NonNull EditText urlBar, @NonNull WebView webView) {
+      @NonNull LinearLayout invidiousInstanceContainer, @NonNull RadioGroup invidiousInstanceGroup,
+      @NonNull RadioButton radioNadeko, @NonNull RadioButton radioYewtu,
+      @NonNull RecyclerView searchResultsList, @NonNull SwitchMaterial switchInvidiousRedirect,
+      @NonNull SwitchMaterial switchShowHidden, @NonNull SwitchMaterial switchYoutubeEmbed,
+      @NonNull EditText urlBar, @NonNull WebView webView) {
     this.rootView = rootView;
     this.breadcrumbContainer = breadcrumbContainer;
     this.breadcrumbScroll = breadcrumbScroll;
     this.btnDesktopMode = btnDesktopMode;
     this.btnHome = btnHome;
+    this.drawerContent = drawerContent;
+    this.drawerLayout = drawerLayout;
     this.emptyMessage = emptyMessage;
     this.fab = fab;
     this.fabNewFolder = fabNewFolder;
     this.fullscreenContainer = fullscreenContainer;
     this.homeList = homeList;
     this.homeScreen = homeScreen;
+    this.invidiousInstanceContainer = invidiousInstanceContainer;
+    this.invidiousInstanceGroup = invidiousInstanceGroup;
+    this.radioNadeko = radioNadeko;
+    this.radioYewtu = radioYewtu;
     this.searchResultsList = searchResultsList;
+    this.switchInvidiousRedirect = switchInvidiousRedirect;
+    this.switchShowHidden = switchShowHidden;
+    this.switchYoutubeEmbed = switchYoutubeEmbed;
     this.urlBar = urlBar;
     this.webView = webView;
   }
 
   @Override
   @NonNull
-  public FrameLayout getRoot() {
+  public DrawerLayout getRoot() {
     return rootView;
   }
 
@@ -139,6 +184,14 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.drawerContent;
+      LinearLayout drawerContent = ViewBindings.findChildViewById(rootView, id);
+      if (drawerContent == null) {
+        break missingId;
+      }
+
+      DrawerLayout drawerLayout = (DrawerLayout) rootView;
+
       id = R.id.emptyMessage;
       TextView emptyMessage = ViewBindings.findChildViewById(rootView, id);
       if (emptyMessage == null) {
@@ -175,9 +228,51 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.invidiousInstanceContainer;
+      LinearLayout invidiousInstanceContainer = ViewBindings.findChildViewById(rootView, id);
+      if (invidiousInstanceContainer == null) {
+        break missingId;
+      }
+
+      id = R.id.invidiousInstanceGroup;
+      RadioGroup invidiousInstanceGroup = ViewBindings.findChildViewById(rootView, id);
+      if (invidiousInstanceGroup == null) {
+        break missingId;
+      }
+
+      id = R.id.radioNadeko;
+      RadioButton radioNadeko = ViewBindings.findChildViewById(rootView, id);
+      if (radioNadeko == null) {
+        break missingId;
+      }
+
+      id = R.id.radioYewtu;
+      RadioButton radioYewtu = ViewBindings.findChildViewById(rootView, id);
+      if (radioYewtu == null) {
+        break missingId;
+      }
+
       id = R.id.searchResultsList;
       RecyclerView searchResultsList = ViewBindings.findChildViewById(rootView, id);
       if (searchResultsList == null) {
+        break missingId;
+      }
+
+      id = R.id.switchInvidiousRedirect;
+      SwitchMaterial switchInvidiousRedirect = ViewBindings.findChildViewById(rootView, id);
+      if (switchInvidiousRedirect == null) {
+        break missingId;
+      }
+
+      id = R.id.switchShowHidden;
+      SwitchMaterial switchShowHidden = ViewBindings.findChildViewById(rootView, id);
+      if (switchShowHidden == null) {
+        break missingId;
+      }
+
+      id = R.id.switchYoutubeEmbed;
+      SwitchMaterial switchYoutubeEmbed = ViewBindings.findChildViewById(rootView, id);
+      if (switchYoutubeEmbed == null) {
         break missingId;
       }
 
@@ -193,9 +288,11 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      return new ActivityMainBinding((FrameLayout) rootView, breadcrumbContainer, breadcrumbScroll,
-          btnDesktopMode, btnHome, emptyMessage, fab, fabNewFolder, fullscreenContainer, homeList,
-          homeScreen, searchResultsList, urlBar, webView);
+      return new ActivityMainBinding((DrawerLayout) rootView, breadcrumbContainer, breadcrumbScroll,
+          btnDesktopMode, btnHome, drawerContent, drawerLayout, emptyMessage, fab, fabNewFolder,
+          fullscreenContainer, homeList, homeScreen, invidiousInstanceContainer,
+          invidiousInstanceGroup, radioNadeko, radioYewtu, searchResultsList,
+          switchInvidiousRedirect, switchShowHidden, switchYoutubeEmbed, urlBar, webView);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

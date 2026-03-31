@@ -11,7 +11,10 @@ data class Folder(
     val parentId: String?,
     val sortOrder: Int = 0,
     val hidden: Boolean = false,
-    val blockedUntil: Long? = null
+    val blockedUntil: Long? = null,
+    val lockInEnabled: Boolean = false,
+    val lockInDurationMinutes: Int = 30,
+    val lockInWarningEnabled: Boolean = true
 )
 
 object WhitelistManager {
@@ -87,6 +90,13 @@ object WhitelistManager {
 
     fun removeEntry(context: Context, url: String) {
         val list = getWhitelist(context).toMutableList()
+        val entry = list.find { it.url == url }
+        if (entry?.folderId != null) {
+            val session = getLockInSession(context, entry.folderId)
+            if (session != null && normalizeUrl(session.first!!) == normalizeUrl(url)) {
+                endLockInSession(context, entry.folderId)
+            }
+        }
         list.removeAll { it.url == url }
         saveWhitelist(context, list)
     }
@@ -146,7 +156,10 @@ object WhitelistManager {
                 parentId = obj.optString("parentId", null).takeIf { it?.isNotEmpty() == true },
                 sortOrder = obj.optInt("sortOrder", 0),
                 hidden = obj.optBoolean("hidden", false),
-                blockedUntil = obj.optLong("blockedUntil", 0).takeIf { it > 0 }
+                blockedUntil = obj.optLong("blockedUntil", 0).takeIf { it > 0 },
+                lockInEnabled = obj.optBoolean("lockInEnabled", false),
+                lockInDurationMinutes = obj.optInt("lockInDurationMinutes", 30),
+                lockInWarningEnabled = obj.optBoolean("lockInWarningEnabled", true)
             ))
         }
         return list
@@ -422,6 +435,110 @@ object WhitelistManager {
         return Pair(false, null)
     }
 
+    fun startLockInSession(context: Context, folderId: String, lockedUrl: String) {
+        val folder = getFolders(context).find { it.id == folderId } ?: return
+        if (isFolderEffectivelyBlocked(context, folderId)) return
+        val expiresAt = System.currentTimeMillis() + (folder.lockInDurationMinutes * 60 * 1000L)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("lockin_${folderId}_url", lockedUrl)
+            .putLong("lockin_${folderId}_expires", expiresAt)
+            .apply()
+    }
+
+    fun endLockInSession(context: Context, folderId: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .remove("lockin_${folderId}_url")
+            .remove("lockin_${folderId}_expires")
+            .apply()
+    }
+
+    fun getLockInSession(context: Context, folderId: String): Pair<String?, Long>? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val url = prefs.getString("lockin_${folderId}_url", null) ?: return null
+        val expires = prefs.getLong("lockin_${folderId}_expires", 0)
+        if (System.currentTimeMillis() >= expires) {
+            endLockInSession(context, folderId)
+            return null
+        }
+        return Pair(url, expires)
+    }
+
+    fun isLockInArmed(context: Context, folderId: String): Boolean {
+        val folder = getFolders(context).find { it.id == folderId } ?: return false
+        return folder.lockInEnabled && getLockInSession(context, folderId) == null
+    }
+
+    fun isLockInActive(context: Context, folderId: String): Boolean {
+        val folder = getFolders(context).find { it.id == folderId } ?: return false
+        return folder.lockInEnabled && getLockInSession(context, folderId) != null
+    }
+
+    fun setLockInEnabled(context: Context, folderId: String, enabled: Boolean, durationMinutes: Int = 30) {
+        val list = getFolders(context).toMutableList()
+        val index = list.indexOfFirst { it.id == folderId }
+        if (index != -1) {
+            list[index] = list[index].copy(lockInEnabled = enabled, lockInDurationMinutes = durationMinutes)
+            saveFolders(context, list)
+            if (!enabled) endLockInSession(context, folderId)
+        }
+    }
+
+    fun setLockInWarningEnabled(context: Context, folderId: String, enabled: Boolean) {
+        val list = getFolders(context).toMutableList()
+        val index = list.indexOfFirst { it.id == folderId }
+        if (index != -1) {
+            list[index] = list[index].copy(lockInWarningEnabled = enabled)
+            saveFolders(context, list)
+        }
+    }
+
+    fun isUrlBlockedByLockIn(context: Context, url: String): Boolean {
+        val normalizedUrl = normalizeUrl(url)
+        val whitelist = getWhitelist(context)
+        for (entry in whitelist) {
+            val normalizedEntry = normalizeUrl(entry.url)
+            val matches = if (!normalizedEntry.contains("/")) {
+                val urlDomain = normalizedUrl.substringBefore("/").substringBefore("?")
+                urlDomain == normalizedEntry || urlDomain.endsWith(".$normalizedEntry")
+            } else {
+                normalizedUrl.startsWith(normalizedEntry)
+            }
+            if (matches && entry.folderId != null) {
+                val folder = getFolders(context).find { it.id == entry.folderId }
+                if (folder != null && folder.lockInEnabled) {
+                    val session = getLockInSession(context, entry.folderId)
+                    if (session != null && normalizeUrl(session.first!!) != normalizedEntry) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
+
+    fun getLockInBlockTimeRemaining(context: Context, url: String): Long {
+        val normalizedUrl = normalizeUrl(url)
+        val whitelist = getWhitelist(context)
+        for (entry in whitelist) {
+            val normalizedEntry = normalizeUrl(entry.url)
+            val matches = if (!normalizedEntry.contains("/")) {
+                val urlDomain = normalizedUrl.substringBefore("/").substringBefore("?")
+                urlDomain == normalizedEntry || urlDomain.endsWith(".$normalizedEntry")
+            } else {
+                normalizedUrl.startsWith(normalizedEntry)
+            }
+            if (matches && entry.folderId != null) {
+                val session = getLockInSession(context, entry.folderId)
+                if (session != null) {
+                    return (session.second - System.currentTimeMillis()).coerceAtLeast(0)
+                }
+            }
+        }
+        return 0
+    }
+
     private fun saveFolders(context: Context, list: List<Folder>) {
         val array = JSONArray()
         for (folder in list) {
@@ -432,6 +549,9 @@ object WhitelistManager {
             obj.put("sortOrder", folder.sortOrder)
             if (folder.hidden) obj.put("hidden", true)
             if (folder.blockedUntil != null) obj.put("blockedUntil", folder.blockedUntil)
+            if (folder.lockInEnabled) obj.put("lockInEnabled", true)
+            if (folder.lockInDurationMinutes != 30) obj.put("lockInDurationMinutes", folder.lockInDurationMinutes)
+            if (!folder.lockInWarningEnabled) obj.put("lockInWarningEnabled", false)
             array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

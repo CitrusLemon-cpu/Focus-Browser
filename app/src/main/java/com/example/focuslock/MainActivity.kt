@@ -226,6 +226,13 @@ class MainActivity : AppCompatActivity() {
                             showFolderBlockedDialog(urlString, blockedFolderName, remaining)
                         }
                         true
+                    } else if (WhitelistManager.isUrlBlockedByLockIn(this@MainActivity, urlToCheck)) {
+                        view?.post {
+                            showHome()
+                            val remaining = WhitelistManager.getLockInBlockTimeRemaining(this@MainActivity, urlToCheck)
+                            showLockInBlockedDialog(urlString, remaining)
+                        }
+                        true
                     } else {
                         false
                     }
@@ -287,6 +294,14 @@ class MainActivity : AppCompatActivity() {
                                 folder?.let { WhitelistManager.getFolderBlockTimeRemaining(this@MainActivity, it.id) } ?: 0L
                             } ?: 0L
                             showFolderBlockedDialog(url, blockedFolderName, remaining)
+                        }
+                        return
+                    }
+                    if (WhitelistManager.isUrlBlockedByLockIn(this@MainActivity, urlToCheck)) {
+                        view?.post {
+                            showHome()
+                            val remaining = WhitelistManager.getLockInBlockTimeRemaining(this@MainActivity, urlToCheck)
+                            showLockInBlockedDialog(url, remaining)
                         }
                         return
                     }
@@ -557,9 +572,13 @@ currentEmbedVideoId = null
                 items.add(HomeItem.FolderItem(folder))
             }
             val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
+            val lockInSession = if (currentFolderId != null)
+                WhitelistManager.getLockInSession(this, currentFolderId!!) else null
             for (entry in entries) {
-                if (!showHiddenItems && entry.hidden) continue
-                items.add(HomeItem.EntryItem(entry))
+                val isLockedOut = lockInSession != null &&
+                    WhitelistManager.normalizeUrl(entry.url) != WhitelistManager.normalizeUrl(lockInSession.first!!)
+                if (!showHiddenItems && (entry.hidden || isLockedOut)) continue
+                items.add(HomeItem.EntryItem(entry, isLockedOut = isLockedOut))
             }
         }
 
@@ -622,6 +641,7 @@ currentEmbedVideoId = null
                 onEntryClick = { entry ->
                     val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) entry.url
                     else "https://${entry.url}"
+
                     if (entry.folderId != null && WhitelistManager.isFolderEffectivelyBlocked(this, entry.folderId)) {
                         val allFolders = WhitelistManager.getFolders(this)
                         var currentId: String? = entry.folderId
@@ -637,10 +657,33 @@ currentEmbedVideoId = null
                             currentId = f.parentId
                         }
                         showFolderBlockedDialog(url, blockedFolderName, remaining)
-                    } else {
-                        showWebView()
-                        binding.webView.loadUrl(url)
+                        return@HomeAdapter
                     }
+
+                    val folderId = entry.folderId
+                    if (folderId != null) {
+                        val session = WhitelistManager.getLockInSession(this, folderId)
+                        if (session != null) {
+                            val lockedUrl = session.first
+                            if (WhitelistManager.normalizeUrl(url) != WhitelistManager.normalizeUrl(lockedUrl!!)) {
+                                val remaining = session.second - System.currentTimeMillis()
+                                showLockInBlockedDialog(url, remaining)
+                                return@HomeAdapter
+                            }
+                        } else if (WhitelistManager.isLockInArmed(this, folderId)) {
+                            val folder = WhitelistManager.getFolders(this).find { it.id == folderId }
+                            if (folder?.lockInWarningEnabled == true) {
+                                showLockInWarningDialog(entry, url, folderId, folder.lockInDurationMinutes)
+                                return@HomeAdapter
+                            } else {
+                                WhitelistManager.startLockInSession(this, folderId, entry.url)
+                                refreshHomeList()
+                            }
+                        }
+                    }
+
+                    showWebView()
+                    binding.webView.loadUrl(url)
                 },
                 onEntryLongPress = { entry -> showEntryMetadataDialog(entry) },
                 onEntryDelete = { entry ->
@@ -925,6 +968,41 @@ currentEmbedVideoId = null
         hiddenRow.addView(hiddenSwitch)
         layout.addView(hiddenRow)
 
+        if (WhitelistManager.isLockInArmed(this, folder.id) || WhitelistManager.isLockInActive(this, folder.id)) {
+            val lockInStatusLabel = TextView(this).apply {
+                text = "Lock-in Mode"
+                textSize = 12f
+                setTextColor(android.graphics.Color.GRAY)
+                setPadding(0, 32, 0, 8)
+            }
+            layout.addView(lockInStatusLabel)
+
+            val session = WhitelistManager.getLockInSession(this, folder.id)
+            if (session != null) {
+                val remaining = session.second - System.currentTimeMillis()
+                val mins = (remaining / 60000).coerceAtLeast(1)
+                val statusText = TextView(this).apply {
+                    text = "\uD83D\uDD12 Active \u2014 locked for ${mins}m remaining"
+                    textSize = 14f
+                    setPadding(0, 8, 0, 8)
+                }
+                layout.addView(statusText)
+            } else {
+                val statusText = TextView(this).apply {
+                    text = "\uD83D\uDD13 Armed \u2014 waiting for first tap"
+                    textSize = 14f
+                    setPadding(0, 8, 0, 8)
+                }
+                layout.addView(statusText)
+            }
+
+            val turnOffBtn = MaterialButton(this).apply {
+                text = "Turn off Lock-in Mode"
+                tag = "lockInTurnOff"
+            }
+            layout.addView(turnOffBtn)
+        }
+
         val blockLabel = TextView(this).apply {
             text = "Block Folder"
             textSize = 12f
@@ -1007,10 +1085,13 @@ currentEmbedVideoId = null
                 refreshHomeList()
                 android.widget.Toast.makeText(this@MainActivity, "Folder blocked", android.widget.Toast.LENGTH_SHORT).show()
             }
+            layout.findViewWithTag<MaterialButton>("lockInTurnOff")?.setOnClickListener {
+                showDisableLockInPasswordDialog(folder.id, dialog)
+            }
             return
         }
 
-        AlertDialog.Builder(this)
+        val mainDialog = AlertDialog.Builder(this)
             .setTitle("Edit Folder")
             .setView(layout)
             .setPositiveButton("Save") { _, _ ->
@@ -1023,6 +1104,9 @@ currentEmbedVideoId = null
             }
             .setNegativeButton("Cancel", null)
             .show()
+        layout.findViewWithTag<MaterialButton>("lockInTurnOff")?.setOnClickListener {
+            showDisableLockInPasswordDialog(folder.id, mainDialog)
+        }
     }
 
     private fun showUnblockPasswordDialog(folderId: String) {
@@ -1073,6 +1157,68 @@ currentEmbedVideoId = null
             .setMessage("The folder \"${folderName ?: "Unknown"}\" is blocked.\n\nTime remaining: $timeStr\n\nURL: $url")
             .setPositiveButton("OK", null)
             .show()
+    }
+
+    private fun showLockInWarningDialog(entry: WhitelistEntry, url: String, folderId: String, durationMinutes: Int) {
+        AlertDialog.Builder(this)
+            .setTitle("\u26A0\uFE0F Start Lock-in Mode?")
+            .setMessage("You will be locked to \"${entry.name}\" for $durationMinutes minutes.\n\nAll other sites in this folder will be blocked until the timer expires.\n\nAre you sure?")
+            .setPositiveButton("Lock In") { _, _ ->
+                WhitelistManager.startLockInSession(this, folderId, entry.url)
+                refreshHomeList()
+                showWebView()
+                binding.webView.loadUrl(url)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showLockInBlockedDialog(url: String, timeRemaining: Long) {
+        val minutes = (timeRemaining / 60000).coerceAtLeast(1)
+        AlertDialog.Builder(this)
+            .setTitle("Lock-in Mode Active")
+            .setMessage("You are currently locked to another site.\n\nTime remaining: $minutes minute(s)")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun showDisableLockInPasswordDialog(folderId: String, dialog: AlertDialog?) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 0)
+        }
+
+        val passwordInput = EditText(this).apply {
+            hint = "Enter password"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            filters = arrayOf(InputFilter.LengthFilter(10))
+        }
+        layout.addView(passwordInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Verify Password")
+            .setView(layout)
+            .setCancelable(false)
+            .setPositiveButton("Disable Lock-in", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+            .apply {
+                setOnShowListener {
+                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val password = passwordInput.text.toString()
+                        if (PasswordManager.verifyPassword(this@MainActivity, password)) {
+                            WhitelistManager.setLockInEnabled(this@MainActivity, folderId, false)
+                            dismiss()
+                            dialog?.dismiss()
+                            refreshHomeList()
+                            android.widget.Toast.makeText(this@MainActivity, "Lock-in mode disabled", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            passwordInput.error = "Incorrect password"
+                        }
+                    }
+                }
+                show()
+            }
     }
 
     private fun showEntryMetadataDialog(entry: WhitelistEntry) {
@@ -1547,7 +1693,7 @@ currentEmbedVideoId = null
     }
     private sealed class HomeItem {
         data class FolderItem(val folder: Folder) : HomeItem()
-        data class EntryItem(val entry: WhitelistEntry) : HomeItem()
+        data class EntryItem(val entry: WhitelistEntry, val isLockedOut: Boolean = false) : HomeItem()
     }
 
     private class HomeAdapter(
@@ -1694,13 +1840,27 @@ currentEmbedVideoId = null
             when (val item = currentItems[position]) {
                 is HomeItem.FolderItem -> {
                     val vh = holder as FolderViewHolder
-                    val isBlocked = WhitelistManager.isFolderBlocked(holder.itemView.context, item.folder.id)
+                    val ctx = holder.itemView.context
+                    val isBlocked = WhitelistManager.isFolderBlocked(ctx, item.folder.id)
+                    val lockInActive = WhitelistManager.isLockInActive(ctx, item.folder.id)
+                    val lockInArmed = WhitelistManager.isLockInArmed(ctx, item.folder.id)
                     if (isBlocked) {
-                        val remaining = WhitelistManager.getFolderBlockTimeRemaining(holder.itemView.context, item.folder.id)
+                        val remaining = WhitelistManager.getFolderBlockTimeRemaining(ctx, item.folder.id)
                         val hrs = remaining / 3600000
                         val mins = (remaining % 3600000) / 60000
                         val timeStr = if (hrs > 0) "${hrs}h ${mins}m" else "${mins}m"
                         vh.textView.text = "\uD83D\uDD12 ${item.folder.name} ($timeStr)"
+                    } else if (lockInActive) {
+                        val session = WhitelistManager.getLockInSession(ctx, item.folder.id)
+                        if (session != null) {
+                            val remaining = session.second - System.currentTimeMillis()
+                            val mins = (remaining / 60000).coerceAtLeast(1)
+                            vh.textView.text = "\uD83D\uDD12 ${item.folder.name} (Locked ${mins}m)"
+                        } else {
+                            vh.textView.text = item.folder.name
+                        }
+                    } else if (lockInArmed) {
+                        vh.textView.text = "\uD83D\uDD13 ${item.folder.name}"
                     } else {
                         vh.textView.text = item.folder.name
                     }
@@ -1708,6 +1868,10 @@ currentEmbedVideoId = null
                     vh.itemView.alpha = folderAlpha
                     if (isBlocked) {
                         vh.iconView.setColorFilter(0xFFFF5722.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+                    } else if (lockInActive) {
+                        vh.iconView.setColorFilter(0xFFFF9800.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+                    } else if (lockInArmed) {
+                        vh.iconView.setColorFilter(0xFF2196F3.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
                     } else {
                         vh.iconView.clearColorFilter()
                     }
@@ -1721,7 +1885,7 @@ currentEmbedVideoId = null
                 is HomeItem.EntryItem -> {
                     val vh = holder as EntryViewHolder
                     vh.textView.text = item.entry.name
-                    val entryAlpha = if (item.entry.hidden) 0.5f else 1.0f
+                    val entryAlpha = if (item.isLockedOut) 0.5f else if (item.entry.hidden) 0.5f else 1.0f
                     vh.itemView.alpha = entryAlpha
                     vh.itemView.setOnClickListener { onEntryClick(item.entry) }
                     vh.itemView.setOnLongClickListener {

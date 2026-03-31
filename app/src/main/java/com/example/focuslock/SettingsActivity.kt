@@ -457,6 +457,86 @@ class SettingsActivity : AppCompatActivity() {
         hiddenRow.addView(hiddenSwitch)
         layout.addView(hiddenRow)
 
+        val lockInLabel = TextView(this).apply {
+            text = "Lock-in Mode"
+            textSize = 12f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, 32, 0, 8)
+        }
+        layout.addView(lockInLabel)
+
+        val lockInRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 0)
+        }
+        val lockInRowLabel = TextView(this).apply {
+            text = "Enable Lock-in Mode"
+            textSize = 16f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val lockInSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+            isChecked = folder.lockInEnabled
+        }
+        lockInRow.addView(lockInRowLabel)
+        lockInRow.addView(lockInSwitch)
+        layout.addView(lockInRow)
+
+        val durationLabel = TextView(this).apply {
+            text = "Session Duration"
+            textSize = 14f
+            setPadding(0, 16, 0, 8)
+            visibility = if (folder.lockInEnabled) View.VISIBLE else View.GONE
+        }
+        layout.addView(durationLabel)
+
+        val durationOptions = listOf(15, 30, 45, 60, 90, 120)
+        val durationNames = durationOptions.map { if (it >= 60) "${it / 60}h ${if (it % 60 > 0) "${it % 60}m" else ""}" else "${it}m" }
+        var selectedDurationMinutes = folder.lockInDurationMinutes
+        val durationSelector = TextView(this).apply {
+            val currentIdx = durationOptions.indexOf(folder.lockInDurationMinutes).coerceAtLeast(0)
+            text = durationNames[currentIdx]
+            textSize = 16f
+            setPadding(0, 8, 0, 8)
+            visibility = if (folder.lockInEnabled) View.VISIBLE else View.GONE
+            setOnClickListener {
+                val names = durationNames.toTypedArray()
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("Select Duration")
+                    .setItems(names) { _, which ->
+                        selectedDurationMinutes = durationOptions[which]
+                        text = names[which]
+                    }
+                    .show()
+            }
+        }
+        layout.addView(durationSelector)
+
+        val warningRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 16, 0, 0)
+            visibility = if (folder.lockInEnabled) View.VISIBLE else View.GONE
+        }
+        val warningLabel = TextView(this).apply {
+            text = "Show warning before each session"
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val warningSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+            isChecked = folder.lockInWarningEnabled
+        }
+        warningRow.addView(warningLabel)
+        warningRow.addView(warningSwitch)
+        layout.addView(warningRow)
+
+        lockInSwitch.setOnCheckedChangeListener { _, isChecked ->
+            val vis = if (isChecked) View.VISIBLE else View.GONE
+            durationLabel.visibility = vis
+            durationSelector.visibility = vis
+            warningRow.visibility = vis
+        }
+
         AlertDialog.Builder(this)
             .setTitle("Edit Folder")
             .setView(layout)
@@ -469,6 +549,8 @@ class SettingsActivity : AppCompatActivity() {
                     WhitelistManager.moveFolderToParent(this, folder.id, selectedParentId)
                 }
                 WhitelistManager.setFolderHidden(this, folder.id, hiddenSwitch.isChecked)
+                WhitelistManager.setLockInEnabled(this, folder.id, lockInSwitch.isChecked, selectedDurationMinutes)
+                WhitelistManager.setLockInWarningEnabled(this, folder.id, warningSwitch.isChecked)
                 refreshList()
             }
             .setNegativeButton("Cancel", null)

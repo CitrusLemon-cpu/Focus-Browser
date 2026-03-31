@@ -39,10 +39,13 @@ public final class ActivitySettingsBinding implements ViewBinding {
   public final MaterialButton btnClearData;
 
   @NonNull
+  public final MaterialButton btnResetProgress;
+
+  @NonNull
   public final RecyclerView recyclerView;
 
   @NonNull
-  public final SwitchMaterial switchYoutubeEmbed;
+  public final SwitchMaterial switchHideFinished;
 
   @NonNull
   public final Toolbar toolbar;
@@ -50,16 +53,18 @@ public final class ActivitySettingsBinding implements ViewBinding {
   private ActivitySettingsBinding(@NonNull LinearLayout rootView,
       @NonNull LinearLayout breadcrumbContainer, @NonNull HorizontalScrollView breadcrumbScroll,
       @NonNull MaterialButton btnAdd, @NonNull MaterialButton btnChangePassword,
-      @NonNull MaterialButton btnClearData, @NonNull RecyclerView recyclerView,
-      @NonNull SwitchMaterial switchYoutubeEmbed, @NonNull Toolbar toolbar) {
+      @NonNull MaterialButton btnClearData, @NonNull MaterialButton btnResetProgress,
+      @NonNull RecyclerView recyclerView, @NonNull SwitchMaterial switchHideFinished,
+      @NonNull Toolbar toolbar) {
     this.rootView = rootView;
     this.breadcrumbContainer = breadcrumbContainer;
     this.breadcrumbScroll = breadcrumbScroll;
     this.btnAdd = btnAdd;
     this.btnChangePassword = btnChangePassword;
     this.btnClearData = btnClearData;
+    this.btnResetProgress = btnResetProgress;
     this.recyclerView = recyclerView;
-    this.switchYoutubeEmbed = switchYoutubeEmbed;
+    this.switchHideFinished = switchHideFinished;
     this.toolbar = toolbar;
   }
 
@@ -120,15 +125,21 @@ public final class ActivitySettingsBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.btnResetProgress;
+      MaterialButton btnResetProgress = ViewBindings.findChildViewById(rootView, id);
+      if (btnResetProgress == null) {
+        break missingId;
+      }
+
       id = R.id.recyclerView;
       RecyclerView recyclerView = ViewBindings.findChildViewById(rootView, id);
       if (recyclerView == null) {
         break missingId;
       }
 
-      id = R.id.switchYoutubeEmbed;
-      SwitchMaterial switchYoutubeEmbed = ViewBindings.findChildViewById(rootView, id);
-      if (switchYoutubeEmbed == null) {
+      id = R.id.switchHideFinished;
+      SwitchMaterial switchHideFinished = ViewBindings.findChildViewById(rootView, id);
+      if (switchHideFinished == null) {
         break missingId;
       }
 
@@ -139,8 +150,8 @@ public final class ActivitySettingsBinding implements ViewBinding {
       }
 
       return new ActivitySettingsBinding((LinearLayout) rootView, breadcrumbContainer,
-          breadcrumbScroll, btnAdd, btnChangePassword, btnClearData, recyclerView,
-          switchYoutubeEmbed, toolbar);
+          breadcrumbScroll, btnAdd, btnChangePassword, btnClearData, btnResetProgress, recyclerView,
+          switchHideFinished, toolbar);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));
