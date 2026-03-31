@@ -64,24 +64,6 @@ class SettingsActivity : AppCompatActivity() {
                 .show()
         }
 
-        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
-        binding.switchHideFinished.isChecked = prefs.getBoolean("hide_finished_videos", false)
-        binding.switchHideFinished.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean("hide_finished_videos", isChecked).apply()
-        }
-
-        binding.btnResetProgress.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("Reset Video Progress")
-                .setMessage("Reset all video watch progress? This cannot be undone.")
-                .setPositiveButton("Reset") { _, _ ->
-                    VideoProgressManager.resetAllProgress(this)
-                    Toast.makeText(this, "Video progress reset", Toast.LENGTH_SHORT).show()
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
-        }
-
         binding.btnCreateCurated.setOnClickListener {
             showCreateCuratedFolderDialog()
         }
@@ -206,7 +188,9 @@ class SettingsActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (folderStack.size > 1) {
+        if (binding.settingsDrawerLayout.isDrawerOpen(android.view.Gravity.END)) {
+            binding.settingsDrawerLayout.closeDrawer(android.view.Gravity.END)
+        } else if (folderStack.size > 1) {
             folderStack.removeAt(folderStack.size - 1)
             refreshList()
         } else {
@@ -881,23 +865,40 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(addTagRow)
 
         val allTags = WhitelistManager.getAllTags(this)
-        val suggestions = allTags.filter { it !in currentTags }
-        if (suggestions.isNotEmpty()) {
-            val suggestLabel = TextView(this).apply {
-                text = "Existing tags"
-                textSize = 11f
-                setTextColor(android.graphics.Color.GRAY)
-                setPadding(0, 16, 0, 4)
-            }
-            layout.addView(suggestLabel)
 
-            val suggestScroll = android.widget.HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = false
+        val suggestLabel = TextView(this).apply {
+            text = "Existing tags"
+            textSize = 11f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, 16, 0, 4)
+            visibility = View.GONE
+        }
+        layout.addView(suggestLabel)
+
+        val suggestScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            visibility = View.GONE
+        }
+        val suggestContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        suggestScroll.addView(suggestContainer)
+        layout.addView(suggestScroll)
+
+        fun rebuildSuggestions(query: String) {
+            suggestContainer.removeAllViews()
+            if (query.isEmpty()) {
+                suggestLabel.visibility = View.GONE
+                suggestScroll.visibility = View.GONE
+                return
             }
-            val suggestContainer = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
+            val filtered = allTags.filter { it !in currentTags && it.contains(query, ignoreCase = true) }
+            if (filtered.isEmpty()) {
+                suggestLabel.visibility = View.GONE
+                suggestScroll.visibility = View.GONE
+                return
             }
-            for (tag in suggestions) {
+            for (tag in filtered) {
                 val chip = TextView(this).apply {
                     text = "+ $tag"
                     textSize = 12f
@@ -917,15 +918,23 @@ class SettingsActivity : AppCompatActivity() {
                         if (tag !in currentTags) {
                             currentTags.add(tag)
                             rebuildChips()
-                            (parent as? LinearLayout)?.removeView(this)
+                            tagInput.text.clear()
                         }
                     }
                 }
                 suggestContainer.addView(chip)
             }
-            suggestScroll.addView(suggestContainer)
-            layout.addView(suggestScroll)
+            suggestLabel.visibility = View.VISIBLE
+            suggestScroll.visibility = View.VISIBLE
         }
+
+        tagInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                rebuildSuggestions(s?.toString()?.trim()?.lowercase() ?: "")
+            }
+        })
 
         var selectedFolderId: String? = entry.folderId
         val folderChoices = buildFolderChoices()

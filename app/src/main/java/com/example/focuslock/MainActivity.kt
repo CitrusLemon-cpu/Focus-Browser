@@ -56,6 +56,9 @@ class MainActivity : AppCompatActivity() {
     private var invidiousRedirectEnabled = false
     private var invidiousInstance = "yewtu.be"
     private var hideFinishedVideos = false
+    private var showTags = false
+    private var showVideoProgress = false
+    private var showConsumedToday = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -99,6 +102,9 @@ class MainActivity : AppCompatActivity() {
         invidiousRedirectEnabled = prefs.getBoolean("invidious_redirect_enabled", false)
         invidiousInstance = prefs.getString("invidious_instance", "yewtu.be") ?: "yewtu.be"
         hideFinishedVideos = prefs.getBoolean("hide_finished_videos", false)
+        showTags = prefs.getBoolean("show_tags", false)
+        showVideoProgress = prefs.getBoolean("show_video_progress", false)
+        showConsumedToday = prefs.getBoolean("show_consumed_today", false)
         applyDesktopMode()
 
         binding.webView.addJavascriptInterface(object {
@@ -160,6 +166,47 @@ class MainActivity : AppCompatActivity() {
         binding.invidiousInstanceGroup.setOnCheckedChangeListener { _, checkedId ->
             invidiousInstance = if (checkedId == binding.radioNadeko.id) "invidious.nadeko.net" else "yewtu.be"
             prefs.edit().putString("invidious_instance", invidiousInstance).apply()
+        }
+
+        binding.switchHideFinished.isChecked = prefs.getBoolean("hide_finished_videos", false)
+        binding.switchHideFinished.setOnCheckedChangeListener { _, isChecked ->
+            hideFinishedVideos = isChecked
+            prefs.edit().putBoolean("hide_finished_videos", isChecked).apply()
+            if (binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
+        }
+
+        binding.btnResetProgress.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Reset Video Progress")
+                .setMessage("Reset all video watch progress? This cannot be undone.")
+                .setPositiveButton("Reset") { _, _ ->
+                    VideoProgressManager.resetAllProgress(this)
+                    android.widget.Toast.makeText(this, "Video progress reset", android.widget.Toast.LENGTH_SHORT).show()
+                    if (binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        binding.switchShowTags.isChecked = showTags
+        binding.switchShowTags.setOnCheckedChangeListener { _, isChecked ->
+            showTags = isChecked
+            prefs.edit().putBoolean("show_tags", isChecked).apply()
+            if (binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
+        }
+
+        binding.switchShowVideoProgress.isChecked = showVideoProgress
+        binding.switchShowVideoProgress.setOnCheckedChangeListener { _, isChecked ->
+            showVideoProgress = isChecked
+            prefs.edit().putBoolean("show_video_progress", isChecked).apply()
+            if (binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
+        }
+
+        binding.switchShowConsumedToday.isChecked = showConsumedToday
+        binding.switchShowConsumedToday.setOnCheckedChangeListener { _, isChecked ->
+            showConsumedToday = isChecked
+            prefs.edit().putBoolean("show_consumed_today", isChecked).apply()
+            if (binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
         }
 
         binding.webView.webViewClient = object : WebViewClient() {
@@ -633,6 +680,12 @@ currentEmbedVideoId = null
         return folders + inProgress + normal + finished
     }
 
+    private fun wasVisitedToday(url: String): Boolean {
+        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+        return prefs.getString("visited_today_$url", null) == today
+    }
+
     private fun refreshHomeList() {
         val items = buildItemList()
         if (items.isEmpty()) {
@@ -647,6 +700,10 @@ currentEmbedVideoId = null
             }
             val adapter = HomeAdapter(
                 items,
+                showTags = showTags,
+                showVideoProgress = showVideoProgress,
+                showConsumedToday = showConsumedToday,
+                wasVisitedToday = { url -> wasVisitedToday(url) },
                 onFolderClick = { folder ->
                     folderStack.add(folder.id)
                     refreshHomeList()
@@ -734,6 +791,9 @@ currentEmbedVideoId = null
                     }
 
                     showWebView()
+                    val visitPrefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+                    val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                    visitPrefs.edit().putString("visited_today_${entry.url}", today).apply()
                     binding.webView.loadUrl(url)
                 },
                 onEntryLongPress = { entry -> showEntryMetadataDialog(entry) },
@@ -1409,23 +1469,40 @@ currentEmbedVideoId = null
         layout.addView(addTagRow)
 
         val allTags = WhitelistManager.getAllTags(this)
-        val suggestions = allTags.filter { it !in currentTags }
-        if (suggestions.isNotEmpty()) {
-            val suggestLabel = TextView(this).apply {
-                text = "Existing tags"
-                textSize = 11f
-                setTextColor(android.graphics.Color.GRAY)
-                setPadding(0, 16, 0, 4)
-            }
-            layout.addView(suggestLabel)
 
-            val suggestScroll = android.widget.HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = false
+        val suggestLabel = TextView(this).apply {
+            text = "Existing tags"
+            textSize = 11f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, 16, 0, 4)
+            visibility = View.GONE
+        }
+        layout.addView(suggestLabel)
+
+        val suggestScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            visibility = View.GONE
+        }
+        val suggestContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        suggestScroll.addView(suggestContainer)
+        layout.addView(suggestScroll)
+
+        fun rebuildSuggestions(query: String) {
+            suggestContainer.removeAllViews()
+            if (query.isEmpty()) {
+                suggestLabel.visibility = View.GONE
+                suggestScroll.visibility = View.GONE
+                return
             }
-            val suggestContainer = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
+            val filtered = allTags.filter { it !in currentTags && it.contains(query, ignoreCase = true) }
+            if (filtered.isEmpty()) {
+                suggestLabel.visibility = View.GONE
+                suggestScroll.visibility = View.GONE
+                return
             }
-            for (tag in suggestions) {
+            for (tag in filtered) {
                 val chip = TextView(this).apply {
                     text = "+ $tag"
                     textSize = 12f
@@ -1445,15 +1522,23 @@ currentEmbedVideoId = null
                         if (tag !in currentTags) {
                             currentTags.add(tag)
                             rebuildChips()
-                            (parent as? LinearLayout)?.removeView(this)
+                            tagInput.text.clear()
                         }
                     }
                 }
                 suggestContainer.addView(chip)
             }
-            suggestScroll.addView(suggestContainer)
-            layout.addView(suggestScroll)
+            suggestLabel.visibility = View.VISIBLE
+            suggestScroll.visibility = View.VISIBLE
         }
+
+        tagInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                rebuildSuggestions(s?.toString()?.trim()?.lowercase() ?: "")
+            }
+        })
 
         val hiddenRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1865,6 +1950,10 @@ currentEmbedVideoId = null
 
     private class HomeAdapter(
         items: List<HomeItem>,
+        private val showTags: Boolean = false,
+        private val showVideoProgress: Boolean = false,
+        private val showConsumedToday: Boolean = false,
+        private val wasVisitedToday: (String) -> Boolean = { false },
         private val onFolderClick: (Folder) -> Unit,
         private val onFolderLongPress: (Folder) -> Unit,
         private val onFolderDelete: (Folder) -> Unit,
@@ -1893,6 +1982,7 @@ currentEmbedVideoId = null
             val deleteButton: ImageButton = wrapper.findViewById(android.R.id.button1)
             val progressTrack: View = wrapper.findViewWithTag("progressTrack")
             val progressFill: View = wrapper.findViewWithTag("progressFill")
+            val tagsRow: LinearLayout = wrapper.findViewWithTag("tagsRow")
         }
 
         override fun getItemViewType(position: Int): Int {
@@ -1991,6 +2081,21 @@ currentEmbedVideoId = null
                     row.addView(deleteBtn)
                     wrapper.addView(row)
 
+                    val tagsRow = LinearLayout(parent.context).apply {
+                        tag = "tagsRow"
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            marginStart = 48
+                            marginEnd = 48
+                            bottomMargin = (4 * dp).toInt()
+                        }
+                        visibility = View.GONE
+                    }
+                    wrapper.addView(tagsRow)
+
                     val progressTrack = android.widget.FrameLayout(parent.context).apply {
                         tag = "progressTrack"
                         layoutParams = LinearLayout.LayoutParams(
@@ -2082,19 +2187,57 @@ currentEmbedVideoId = null
                     }
                     vh.deleteButton.setOnClickListener { onEntryDelete(item.entry) }
 
-                    val videoId = VideoProgressManager.extractVideoId(item.entry.url)
-                    if (videoId != null) {
-                        val progress = VideoProgressManager.getProgress(vh.itemView.context, videoId)
-                        if (progress != null && progress.isStarted && progress.duration > 0) {
-                            vh.progressTrack.visibility = View.VISIBLE
-                            val color = if (progress.isFinished) 0xFF4CAF50.toInt() else 0xFF1976D2.toInt()
-                            vh.progressFill.setBackgroundColor(color)
-                            vh.progressTrack.post {
-                                val trackWidth = vh.progressTrack.width
-                                val fillWidth = (trackWidth * progress.percentage).toInt()
-                                vh.progressFill.layoutParams = vh.progressFill.layoutParams.apply {
-                                    width = fillWidth
+                    if (showConsumedToday && wasVisitedToday(item.entry.url)) {
+                        vh.textView.setTextColor(0xFF4CAF50.toInt())
+                    } else {
+                        val typedValue = android.util.TypedValue()
+                        vh.itemView.context.theme.resolveAttribute(android.R.attr.textColorPrimary, typedValue, true)
+                        vh.textView.setTextColor(vh.itemView.context.getColor(typedValue.resourceId))
+                    }
+
+                    val dp = vh.itemView.context.resources.displayMetrics.density
+                    if (showTags && item.entry.tags.isNotEmpty()) {
+                        vh.tagsRow.removeAllViews()
+                        for (tag in item.entry.tags) {
+                            val chip = TextView(vh.itemView.context).apply {
+                                text = tag
+                                textSize = 11f
+                                setPadding((8 * dp).toInt(), (2 * dp).toInt(), (8 * dp).toInt(), (2 * dp).toInt())
+                                background = GradientDrawable().apply {
+                                    cornerRadius = 12 * dp
+                                    setColor(0x1F000000)
                                 }
+                                layoutParams = LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                                    LinearLayout.LayoutParams.WRAP_CONTENT
+                                ).apply {
+                                    marginEnd = (6 * dp).toInt()
+                                }
+                            }
+                            vh.tagsRow.addView(chip)
+                        }
+                        vh.tagsRow.visibility = View.VISIBLE
+                    } else {
+                        vh.tagsRow.visibility = View.GONE
+                    }
+
+                    if (showVideoProgress) {
+                        val videoId = VideoProgressManager.extractVideoId(item.entry.url)
+                        if (videoId != null) {
+                            val progress = VideoProgressManager.getProgress(vh.itemView.context, videoId)
+                            if (progress != null && progress.isStarted && progress.duration > 0) {
+                                vh.progressTrack.visibility = View.VISIBLE
+                                val color = if (progress.isFinished) 0xFF4CAF50.toInt() else 0xFF1976D2.toInt()
+                                vh.progressFill.setBackgroundColor(color)
+                                vh.progressTrack.post {
+                                    val trackWidth = vh.progressTrack.width
+                                    val fillWidth = (trackWidth * progress.percentage).toInt()
+                                    vh.progressFill.layoutParams = vh.progressFill.layoutParams.apply {
+                                        width = fillWidth
+                                    }
+                                }
+                            } else {
+                                vh.progressTrack.visibility = View.GONE
                             }
                         } else {
                             vh.progressTrack.visibility = View.GONE
