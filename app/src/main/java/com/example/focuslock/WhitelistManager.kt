@@ -602,6 +602,7 @@ object WhitelistManager {
     fun isUrlBlockedByLockIn(context: Context, url: String): Boolean {
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
+        var anyBlocked = false
         for (entry in whitelist) {
             val normalizedEntry = normalizeUrl(entry.url)
             val matches = if (!normalizedEntry.contains("/")) {
@@ -610,22 +611,22 @@ object WhitelistManager {
             } else {
                 normalizedUrl.startsWith(normalizedEntry)
             }
-            if (matches && entry.folderId != null) {
-                val folder = getFolders(context).find { it.id == entry.folderId }
-                if (folder != null && folder.lockInEnabled) {
-                    val session = getLockInSession(context, entry.folderId)
-                    if (session != null && normalizeUrl(session.first!!) != normalizedEntry) {
-                        return true
-                    }
-                }
-            }
+            if (!matches) continue
+            if (entry.folderId == null) return false
+            val folder = getFolders(context).find { it.id == entry.folderId }
+            if (folder == null || !folder.lockInEnabled) return false
+            val session = getLockInSession(context, entry.folderId)
+            if (session == null) return false
+            if (normalizeUrl(session.first!!) == normalizedEntry) return false
+            anyBlocked = true
         }
-        return false
+        return anyBlocked
     }
 
     fun getLockInBlockTimeRemaining(context: Context, url: String): Long {
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
+        var maxRemaining = 0L
         for (entry in whitelist) {
             val normalizedEntry = normalizeUrl(entry.url)
             val matches = if (!normalizedEntry.contains("/")) {
@@ -634,14 +635,16 @@ object WhitelistManager {
             } else {
                 normalizedUrl.startsWith(normalizedEntry)
             }
-            if (matches && entry.folderId != null) {
-                val session = getLockInSession(context, entry.folderId)
-                if (session != null) {
-                    return (session.second - System.currentTimeMillis()).coerceAtLeast(0)
-                }
-            }
+            if (!matches) continue
+            if (entry.folderId == null) return 0
+            val folder = getFolders(context).find { it.id == entry.folderId }
+            if (folder == null || !folder.lockInEnabled) return 0
+            val session = getLockInSession(context, entry.folderId) ?: return 0
+            if (normalizeUrl(session.first!!) == normalizedEntry) return 0
+            val remaining = (session.second - System.currentTimeMillis()).coerceAtLeast(0)
+            if (remaining > maxRemaining) maxRemaining = remaining
         }
-        return 0
+        return maxRemaining
     }
 
     private fun saveFolders(context: Context, list: List<Folder>) {
