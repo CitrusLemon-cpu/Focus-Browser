@@ -54,6 +54,9 @@ class MainActivity : AppCompatActivity() {
     private var showHiddenItems = false
     private var currentEmbedVideoId: String? = null
     private var currentEmbedEntryUrl: String? = null
+    private var descriptionEditMode = false
+    private var descriptionDirty = false
+    private var pendingDescriptionText: String? = null
     private var invidiousRedirectEnabled = false
     private var invidiousInstance = "yewtu.be"
     private var hideFinishedVideos = false
@@ -115,10 +118,32 @@ class MainActivity : AppCompatActivity() {
             }
 
             @android.webkit.JavascriptInterface
-            fun onEditDescriptionTapped(currentDesc: String) {
+            fun onDescriptionEditModeEntered() {
+                descriptionEditMode = true
+            }
+
+            @android.webkit.JavascriptInterface
+            fun onDescriptionTextChanged(text: String) {
+                pendingDescriptionText = text
+                descriptionDirty = true
+            }
+
+            @android.webkit.JavascriptInterface
+            fun saveDescription(text: String) {
+                val entryUrl = currentEmbedEntryUrl ?: return
                 runOnUiThread {
-                    showEmbedDescriptionEditDialog(currentDesc)
+                    WhitelistManager.setEntryDescription(this@MainActivity, entryUrl, text)
                 }
+                descriptionEditMode = false
+                descriptionDirty = false
+                pendingDescriptionText = null
+            }
+
+            @android.webkit.JavascriptInterface
+            fun onDescriptionEditModeCancelled() {
+                descriptionEditMode = false
+                descriptionDirty = false
+                pendingDescriptionText = null
             }
         }, "FocusBridge")
 
@@ -467,7 +492,11 @@ class MainActivity : AppCompatActivity() {
         showHome()
 
         binding.btnHome.setOnClickListener {
-            showHome()
+            if (currentEmbedVideoId != null && descriptionEditMode && descriptionDirty) {
+                showUnsavedDescriptionDialog()
+            } else {
+                showHome()
+            }
         }
 
         binding.btnDesktopMode.setOnClickListener {
@@ -600,6 +629,9 @@ currentEmbedVideoId = null
     private fun showHome() {
         currentEmbedVideoId = null
         currentEmbedEntryUrl = null
+        descriptionEditMode = false
+        descriptionDirty = false
+        pendingDescriptionText = null
         binding.webView.stopLoading()
         binding.webView.loadUrl("about:blank")
         binding.homeScreen.visibility = View.VISIBLE
@@ -1977,14 +2009,22 @@ currentEmbedVideoId = null
             else 0.0
         } ?: 0.0
 
+        val descJson = "\"${(description ?: "").replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")}\""
+
         val descHtml = if (showDescriptionSection) """
-        <div class="desc-section" onclick="FocusBridge.onEditDescriptionTapped(document.getElementById('descText').innerText)" style="cursor:pointer">
-          <div id="descText" class="${if (!description.isNullOrEmpty()) "desc-text" else "desc-placeholder"}">
-            ${if (!description.isNullOrEmpty()) description.replace("<", "&lt;").replace("\n", "<br>") else "Tap to add a note..."}
-          </div>
-          <div class="desc-edit-hint">&#9999; tap to edit</div>
-        </div>
-        """ else ""
+<div id="desc-section" style="border-top: 1px solid #1e1e1e; margin-top: 4px;">
+  <div id="desc-view" style="padding: 12px 16px; display: flex; align-items: flex-start; gap: 10px;">
+    <div id="descText" style="flex: 1; font-size: 14px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; ${if (!description.isNullOrEmpty()) "color: #ccc;" else "color: #555; font-style: italic;"}">${ if (!description.isNullOrEmpty()) description.replace("<", "&lt;").replace("\n", "<br>") else "No note \u2014 tap Edit to add one"}</div>
+    <button onclick="enterDescEditMode()" style="background: #2a2a2a; color: #aaa; border: 1px solid #444; border-radius: 6px; padding: 5px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">\u270f Edit</button>
+  </div>
+  <div id="desc-edit" style="padding: 12px 16px; display: none;">
+    <textarea id="descTextarea" oninput="FocusBridge.onDescriptionTextChanged(this.value)" style="width: 100%; background: #1a1a1a; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 10px; font-size: 14px; line-height: 1.5; resize: vertical; min-height: 80px; box-sizing: border-box; font-family: -apple-system, sans-serif; outline: none;"></textarea>
+    <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;">
+      <button onclick="cancelDescEdit()" style="background: #2a2a2a; color: #aaa; border: 1px solid #444; border-radius: 6px; padding: 8px 16px; font-size: 14px; cursor: pointer;">Cancel</button>
+      <button onclick="saveDescEdit()" style="background: #1976D2; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 14px; cursor: pointer; font-weight: 600;">Save</button>
+    </div>
+  </div>
+</div>""" else ""
 
         return """
         <!DOCTYPE html>
@@ -2001,10 +2041,7 @@ currentEmbedVideoId = null
           .video-container { width: 100%; aspect-ratio: 16/9; background: #000; }
           #progress-track { width: 100%; height: 4px; background: #272727; }
           #progress-fill { height: 100%; width: ${initialPct}%; background: ${initialColor}; transition: width 0.3s ease; }
-          .desc-section { padding: 12px 16px; }
-          .desc-text { color: #ccc; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-          .desc-placeholder { color: #555; font-size: 14px; font-style: italic; }
-          .desc-edit-hint { color: #555; font-size: 11px; margin-top: 4px; }
+
         </style>
         </head>
         <body>
@@ -2018,6 +2055,7 @@ currentEmbedVideoId = null
           var player;
           var progressInterval;
           var savedTime = ${savedTime};
+          var descOriginalText = ${descJson};
           function onYouTubeIframeAPIReady() {
             player = new YT.Player('player', {
               width: '100%',
@@ -2069,16 +2107,34 @@ currentEmbedVideoId = null
               else document.getElementById('title').textContent = '';
             })
             .catch(function() { document.getElementById('title').textContent = ''; });
-          function updateDescriptionText(text) {
+          function enterDescEditMode() {
+            document.getElementById('desc-view').style.display = 'none';
+            document.getElementById('desc-edit').style.display = 'block';
+            document.getElementById('descTextarea').value = descOriginalText;
+            document.getElementById('descTextarea').focus();
+            FocusBridge.onDescriptionEditModeEntered();
+          }
+          function saveDescEdit() {
+            var text = document.getElementById('descTextarea').value.trim();
+            FocusBridge.saveDescription(text);
+            descOriginalText = text;
             var el = document.getElementById('descText');
-            if (!el) return;
-            if (text && text.trim()) {
-              el.className = 'desc-text';
+            if (text) {
+              el.style.color = '#ccc';
+              el.style.fontStyle = 'normal';
               el.innerHTML = text.replace(/</g, '&lt;').replace(/\n/g, '<br>');
             } else {
-              el.className = 'desc-placeholder';
-              el.innerText = 'Tap to add a note...';
+              el.style.color = '#555';
+              el.style.fontStyle = 'italic';
+              el.innerText = 'No note \u2014 tap Edit to add one';
             }
+            document.getElementById('desc-view').style.display = 'flex';
+            document.getElementById('desc-edit').style.display = 'none';
+          }
+          function cancelDescEdit() {
+            FocusBridge.onDescriptionEditModeCancelled();
+            document.getElementById('desc-view').style.display = 'flex';
+            document.getElementById('desc-edit').style.display = 'none';
           }
         </script>
         </body>
@@ -2086,30 +2142,30 @@ currentEmbedVideoId = null
         """.trimIndent()
     }
 
-    private fun showEmbedDescriptionEditDialog(currentDesc: String) {
-        val entryUrl = currentEmbedEntryUrl ?: return
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 0)
-        }
-        val input = EditText(this).apply {
-            setText(currentDesc)
-            hint = "Add a note about this video..."
-            minLines = 3
-            maxLines = 8
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-        }
-        layout.addView(input)
+    private fun showUnsavedDescriptionDialog() {
+        val entryUrl = currentEmbedEntryUrl
+        val text = pendingDescriptionText ?: ""
         AlertDialog.Builder(this)
-            .setTitle("Edit Description")
-            .setView(layout)
+            .setTitle("Unsaved Changes")
+            .setMessage("Save your description note before leaving?")
             .setPositiveButton("Save") { _, _ ->
-                val newDesc = input.text.toString().trim()
-                WhitelistManager.setEntryDescription(this, entryUrl, newDesc)
-                val escaped = newDesc.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
-                binding.webView.evaluateJavascript("updateDescriptionText('$escaped')", null)
+                if (entryUrl != null) {
+                    WhitelistManager.setEntryDescription(this, entryUrl, text)
+                }
+                descriptionEditMode = false
+                descriptionDirty = false
+                pendingDescriptionText = null
+                currentEmbedVideoId = null
+                showHome()
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("Discard") { _, _ ->
+                descriptionEditMode = false
+                descriptionDirty = false
+                pendingDescriptionText = null
+                currentEmbedVideoId = null
+                showHome()
+            }
+            .setNeutralButton("Keep Editing", null)
             .show()
     }
 
@@ -2152,6 +2208,10 @@ currentEmbedVideoId = null
         }
         if (binding.webView.visibility == View.VISIBLE) {
             if (currentEmbedVideoId != null) {
+                if (descriptionEditMode && descriptionDirty) {
+                    showUnsavedDescriptionDialog()
+                    return
+                }
                 currentEmbedVideoId = null
                 showHome()
             } else if (binding.webView.canGoBack()) {
