@@ -1183,11 +1183,13 @@ currentEmbedVideoId = null
                 layout.addView(statusText)
             }
 
-            val turnOffBtn = MaterialButton(this).apply {
-                text = "Turn off Lock-in Mode"
-                tag = "lockInTurnOff"
+            if (session != null) {
+                val endSessionBtn = MaterialButton(this).apply {
+                    text = "End Current Session"
+                    tag = "lockInEndSession"
+                }
+                layout.addView(endSessionBtn)
             }
-            layout.addView(turnOffBtn)
         }
 
         val blockLabel = TextView(this).apply {
@@ -1272,8 +1274,8 @@ currentEmbedVideoId = null
                 refreshHomeList()
                 android.widget.Toast.makeText(this@MainActivity, "Folder blocked", android.widget.Toast.LENGTH_SHORT).show()
             }
-            layout.findViewWithTag<MaterialButton>("lockInTurnOff")?.setOnClickListener {
-                showDisableLockInPasswordDialog(effectiveLockInId ?: folder.id, dialog)
+            layout.findViewWithTag<MaterialButton>("lockInEndSession")?.setOnClickListener {
+                showEndLockInSessionDialog(effectiveLockInId ?: folder.id, dialog)
             }
             return
         }
@@ -1291,8 +1293,8 @@ currentEmbedVideoId = null
             }
             .setNegativeButton("Cancel", null)
             .show()
-        layout.findViewWithTag<MaterialButton>("lockInTurnOff")?.setOnClickListener {
-            showDisableLockInPasswordDialog(effectiveLockInId ?: folder.id, mainDialog)
+        layout.findViewWithTag<MaterialButton>("lockInEndSession")?.setOnClickListener {
+            showEndLockInSessionDialog(effectiveLockInId ?: folder.id, mainDialog)
         }
     }
 
@@ -1369,7 +1371,7 @@ currentEmbedVideoId = null
             .show()
     }
 
-    private fun showDisableLockInPasswordDialog(folderId: String, dialog: AlertDialog?) {
+    private fun showEndLockInSessionDialog(folderId: String, dialog: AlertDialog?) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 32, 48, 0)
@@ -1386,7 +1388,7 @@ currentEmbedVideoId = null
             .setTitle("Verify Password")
             .setView(layout)
             .setCancelable(false)
-            .setPositiveButton("Disable Lock-in", null)
+            .setPositiveButton("End Session", null)
             .setNegativeButton("Cancel", null)
             .create()
             .apply {
@@ -1394,11 +1396,11 @@ currentEmbedVideoId = null
                     getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                         val password = passwordInput.text.toString()
                         if (PasswordManager.verifyPassword(this@MainActivity, password)) {
-                            WhitelistManager.setLockInEnabled(this@MainActivity, folderId, false)
+                            WhitelistManager.endLockInSession(this@MainActivity, folderId)
                             dismiss()
                             dialog?.dismiss()
                             refreshHomeList()
-                            android.widget.Toast.makeText(this@MainActivity, "Lock-in mode disabled", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(this@MainActivity, "Session ended", android.widget.Toast.LENGTH_SHORT).show()
                         } else {
                             passwordInput.error = "Incorrect password"
                         }
