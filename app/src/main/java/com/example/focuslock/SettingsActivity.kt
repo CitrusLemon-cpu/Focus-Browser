@@ -42,7 +42,14 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun initSettings() {
         refreshList()
-        binding.btnAdd.setOnClickListener { showAddEntryDialog() }
+        binding.btnAdd.setOnClickListener {
+            val curatedFolder = if (currentFolderId != null) WhitelistManager.getFolders(this).find { it.id == currentFolderId } else null
+            if (curatedFolder?.isCurated == true) {
+                Toast.makeText(this, "Use long-press on a site to add it to this curated folder.", Toast.LENGTH_LONG).show()
+            } else {
+                showAddEntryDialog()
+            }
+        }
         binding.btnChangePassword.setOnClickListener { showChangePasswordFlow() }
 
         binding.btnClearData.setOnClickListener {
@@ -74,13 +81,28 @@ class SettingsActivity : AppCompatActivity() {
                 .setNegativeButton("Cancel", null)
                 .show()
         }
+
+        binding.btnCreateCurated.setOnClickListener {
+            showCreateCuratedFolderDialog()
+        }
     }
 
     private fun buildSettingsList(): List<SettingsItem> {
         val items = mutableListOf<SettingsItem>()
         val subfolders = WhitelistManager.getSubfolders(this, currentFolderId)
-        for (folder in subfolders) {
-            items.add(SettingsItem.FolderItem(folder))
+        if (currentFolderId == null) {
+            val curated = subfolders.filter { it.isCurated }.sortedBy { it.sortOrder }
+            val regular = subfolders.filter { !it.isCurated }.sortedBy { it.sortOrder }
+            for (folder in curated) {
+                items.add(SettingsItem.FolderItem(folder))
+            }
+            for (folder in regular) {
+                items.add(SettingsItem.FolderItem(folder))
+            }
+        } else {
+            for (folder in subfolders) {
+                items.add(SettingsItem.FolderItem(folder))
+            }
         }
         val entries = WhitelistManager.getEntriesInFolder(this, currentFolderId)
         for (entry in entries) {
@@ -101,8 +123,19 @@ class SettingsActivity : AppCompatActivity() {
             onFolderDelete = { folder -> showDeleteFolderDialog(folder) },
             onEntryLongPress = { entry -> showEntryMetadataDialog(entry) },
             onEntryDelete = { entry ->
-                WhitelistManager.removeEntry(this, entry.url)
-                refreshList()
+                val entryFolder = if (entry.folderId != null) WhitelistManager.getFolders(this).find { it.id == entry.folderId } else null
+                if (entryFolder?.isCurated == true && entryFolder.preventEditWithoutPassword) {
+                    showSettingsPasswordDialogThen {
+                        WhitelistManager.removeEntryFromFolder(this, entry.url, entryFolder.id)
+                        refreshList()
+                    }
+                } else if (entryFolder?.isCurated == true) {
+                    WhitelistManager.removeEntryFromFolder(this, entry.url, entryFolder.id)
+                    refreshList()
+                } else {
+                    WhitelistManager.removeEntry(this, entry.url)
+                    refreshList()
+                }
             }
         )
         if (binding.recyclerView.layoutManager == null) {
@@ -110,6 +143,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         binding.recyclerView.adapter = adapter
         updateBreadcrumb()
+        binding.btnCreateCurated.visibility = if (currentFolderId == null) View.VISIBLE else View.GONE
     }
 
     private fun updateBreadcrumb() {
@@ -184,7 +218,7 @@ class SettingsActivity : AppCompatActivity() {
         val folders = WhitelistManager.getFolders(this)
         val result = mutableListOf<Pair<String?, String>>(null to "None (root)")
         fun addLevel(parentId: String?, indent: Int) {
-            folders.filter { it.parentId == parentId }.forEach { folder ->
+            folders.filter { it.parentId == parentId && !it.isCurated }.forEach { folder ->
                 val prefix = "\u00A0\u00A0".repeat(indent)
                 result.add(folder.id to "$prefix${folder.name}")
                 addLevel(folder.id, indent + 1)
@@ -440,6 +474,11 @@ class SettingsActivity : AppCompatActivity() {
         }
         layout.addView(parentSelector)
 
+        if (folder.isCurated) {
+            parentLabel.visibility = View.GONE
+            parentSelector.visibility = View.GONE
+        }
+
         val hiddenRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
@@ -457,6 +496,230 @@ class SettingsActivity : AppCompatActivity() {
         hiddenRow.addView(hiddenSwitch)
         layout.addView(hiddenRow)
 
+        val lockInLabel = TextView(this).apply {
+            text = "Lock-in Mode"
+            textSize = 12f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, 32, 0, 8)
+        }
+        layout.addView(lockInLabel)
+
+        val lockInRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 0)
+        }
+        val lockInRowLabel = TextView(this).apply {
+            text = "Enable Lock-in Mode"
+            textSize = 16f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val lockInSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+            isChecked = folder.lockInEnabled
+        }
+        lockInRow.addView(lockInRowLabel)
+        lockInRow.addView(lockInSwitch)
+        layout.addView(lockInRow)
+
+        val durationLabel = TextView(this).apply {
+            text = "Session Duration"
+            textSize = 14f
+            setPadding(0, 16, 0, 8)
+            visibility = if (folder.lockInEnabled) View.VISIBLE else View.GONE
+        }
+        layout.addView(durationLabel)
+
+        val durationOptions = listOf(15, 30, 45, 60, 90, 120)
+        val durationNames = durationOptions.map { if (it >= 60) "${it / 60}h ${if (it % 60 > 0) "${it % 60}m" else ""}" else "${it}m" }
+        var selectedDurationMinutes = folder.lockInDurationMinutes
+        val durationSelector = TextView(this).apply {
+            val currentIdx = durationOptions.indexOf(folder.lockInDurationMinutes).coerceAtLeast(0)
+            text = durationNames[currentIdx]
+            textSize = 16f
+            setPadding(0, 8, 0, 8)
+            visibility = if (folder.lockInEnabled) View.VISIBLE else View.GONE
+            setOnClickListener {
+                val names = durationNames.toTypedArray()
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("Select Duration")
+                    .setItems(names) { _, which ->
+                        selectedDurationMinutes = durationOptions[which]
+                        text = names[which]
+                    }
+                    .show()
+            }
+        }
+        layout.addView(durationSelector)
+
+        val warningRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 16, 0, 0)
+            visibility = if (folder.lockInEnabled) View.VISIBLE else View.GONE
+        }
+        val warningLabel = TextView(this).apply {
+            text = "Show warning before each session"
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val warningSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+            isChecked = folder.lockInWarningEnabled
+        }
+        warningRow.addView(warningLabel)
+        warningRow.addView(warningSwitch)
+        layout.addView(warningRow)
+
+        lockInSwitch.setOnCheckedChangeListener { _, isChecked ->
+            val vis = if (isChecked) View.VISIBLE else View.GONE
+            durationLabel.visibility = vis
+            durationSelector.visibility = vis
+            warningRow.visibility = vis
+        }
+
+        var selectedEmoji = folder.iconEmoji ?: "⭐"
+        var selectedMaxSites: Int? = folder.maxSites
+        val preventEditSwitch: com.google.android.material.switchmaterial.SwitchMaterial?
+        val ignoreLockInSwitch: com.google.android.material.switchmaterial.SwitchMaterial?
+
+        if (folder.isCurated) {
+            val curatedLabel = TextView(this).apply {
+                text = "Curated Folder Settings"
+                textSize = 12f
+                setTextColor(android.graphics.Color.GRAY)
+                setPadding(0, 32, 0, 8)
+            }
+            layout.addView(curatedLabel)
+
+            val iconLabel = TextView(this).apply {
+                text = "Folder Icon"
+                textSize = 14f
+                setPadding(0, 8, 0, 8)
+            }
+            layout.addView(iconLabel)
+
+            val emojis = listOf("⭐", "📌", "🎯", "🔥", "💎", "📺", "🎬", "📋", "🗂️", "✨", "🏆", "❤️", "📚", "🎵", "🌟", "👀")
+            val emojiGrid = android.widget.GridLayout(this).apply {
+                columnCount = 8
+                setPadding(0, 4, 0, 16)
+            }
+            val dp = resources.displayMetrics.density
+            val emojiViews = mutableListOf<TextView>()
+            for (emoji in emojis) {
+                val emojiBtn = TextView(this).apply {
+                    text = emoji
+                    textSize = 22f
+                    gravity = android.view.Gravity.CENTER
+                    val size = (40 * dp).toInt()
+                    layoutParams = android.widget.GridLayout.LayoutParams().apply {
+                        width = size
+                        height = size
+                        setMargins((2 * dp).toInt(), (2 * dp).toInt(), (2 * dp).toInt(), (2 * dp).toInt())
+                    }
+                    val bg = android.graphics.drawable.GradientDrawable().apply {
+                        cornerRadius = 8 * dp
+                        setColor(if (emoji == selectedEmoji) 0x302196F3 else 0x00000000)
+                    }
+                    background = bg
+                    setOnClickListener {
+                        selectedEmoji = emoji
+                        for (ev in emojiViews) {
+                            val evBg = ev.background as? android.graphics.drawable.GradientDrawable
+                            evBg?.setColor(if (ev.text == emoji) 0x302196F3 else 0x00000000)
+                        }
+                    }
+                }
+                emojiViews.add(emojiBtn)
+                emojiGrid.addView(emojiBtn)
+            }
+            layout.addView(emojiGrid)
+
+            val maxSitesLabel = TextView(this).apply {
+                text = "Maximum Sites"
+                textSize = 14f
+                setPadding(0, 8, 0, 4)
+            }
+            layout.addView(maxSitesLabel)
+
+            val maxSitesInput = EditText(this).apply {
+                hint = "Unlimited"
+                inputType = InputType.TYPE_CLASS_NUMBER
+                if (folder.maxSites != null) setText(folder.maxSites.toString())
+            }
+            layout.addView(maxSitesInput)
+
+            val preventEditRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 16, 0, 0)
+            }
+            val preventEditLabel = TextView(this).apply {
+                text = "Require password to add/remove sites"
+                textSize = 14f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val pSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+                isChecked = folder.preventEditWithoutPassword
+            }
+            preventEditRow.addView(preventEditLabel)
+            preventEditRow.addView(pSwitch)
+            layout.addView(preventEditRow)
+            preventEditSwitch = pSwitch
+
+            val ignoreLockInRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 16, 0, 0)
+            }
+            val ignoreLockInLabel = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            ignoreLockInLabel.addView(TextView(this).apply {
+                text = "Ignore lock-in mode"
+                textSize = 14f
+            })
+            ignoreLockInLabel.addView(TextView(this).apply {
+                text = "Sites bypass lock-in restrictions from other folders"
+                textSize = 11f
+                setTextColor(android.graphics.Color.GRAY)
+            })
+            val iSwitch = com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+                isChecked = folder.ignoreLockInMode
+            }
+            ignoreLockInRow.addView(ignoreLockInLabel)
+            ignoreLockInRow.addView(iSwitch)
+            layout.addView(ignoreLockInRow)
+            ignoreLockInSwitch = iSwitch
+
+            val scrollView = android.widget.ScrollView(this).apply { addView(layout) }
+
+            AlertDialog.Builder(this)
+                .setTitle("Edit Curated Folder")
+                .setView(scrollView)
+                .setPositiveButton("Save") { _, _ ->
+                    val newName = nameInput.text.toString().trim()
+                    if (newName.isNotEmpty()) {
+                        WhitelistManager.renameFolder(this, folder.id, newName)
+                    }
+                    WhitelistManager.setFolderHidden(this, folder.id, hiddenSwitch.isChecked)
+                    WhitelistManager.setCuratedFolderIcon(this, folder.id, selectedEmoji)
+                    val maxSitesVal = maxSitesInput.text.toString().trim()
+                    val maxSitesInt = maxSitesVal.toIntOrNull()
+                    WhitelistManager.setCuratedFolderMaxSites(this, folder.id, if (maxSitesInt != null && maxSitesInt > 0) maxSitesInt else null)
+                    WhitelistManager.setCuratedPreventEdit(this, folder.id, preventEditSwitch!!.isChecked)
+                    WhitelistManager.setCuratedIgnoreLockIn(this, folder.id, ignoreLockInSwitch!!.isChecked)
+                    WhitelistManager.setLockInEnabled(this, folder.id, lockInSwitch.isChecked, selectedDurationMinutes)
+                    WhitelistManager.setLockInWarningEnabled(this, folder.id, warningSwitch.isChecked)
+                    refreshList()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        } else {
+            preventEditSwitch = null
+            ignoreLockInSwitch = null
+        }
+
         AlertDialog.Builder(this)
             .setTitle("Edit Folder")
             .setView(layout)
@@ -469,6 +732,8 @@ class SettingsActivity : AppCompatActivity() {
                     WhitelistManager.moveFolderToParent(this, folder.id, selectedParentId)
                 }
                 WhitelistManager.setFolderHidden(this, folder.id, hiddenSwitch.isChecked)
+                WhitelistManager.setLockInEnabled(this, folder.id, lockInSwitch.isChecked, selectedDurationMinutes)
+                WhitelistManager.setLockInWarningEnabled(this, folder.id, warningSwitch.isChecked)
                 refreshList()
             }
             .setNegativeButton("Cancel", null)
@@ -717,6 +982,33 @@ class SettingsActivity : AppCompatActivity() {
             layout.addView(resetBtn)
         }
 
+        val curatedFolders = WhitelistManager.getCuratedFolders(this)
+        if (curatedFolders.isNotEmpty()) {
+            val addToCuratedBtn = com.google.android.material.button.MaterialButton(this).apply {
+                text = "Add to Curated Folder"
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 24
+                }
+                setOnClickListener {
+                    if (curatedFolders.size == 1) {
+                        settingsAttemptAddToCurated(entry, curatedFolders[0])
+                    } else {
+                        val names = curatedFolders.map { "${it.iconEmoji ?: ""} ${it.name}" }.toTypedArray()
+                        AlertDialog.Builder(this@SettingsActivity)
+                            .setTitle("Select Curated Folder")
+                            .setItems(names) { _, which ->
+                                settingsAttemptAddToCurated(entry, curatedFolders[which])
+                            }
+                            .show()
+                    }
+                }
+            }
+            layout.addView(addToCuratedBtn)
+        }
+
         val scrollView = android.widget.ScrollView(this).apply { addView(layout) }
 
         AlertDialog.Builder(this)
@@ -855,10 +1147,18 @@ class SettingsActivity : AppCompatActivity() {
             return direct + childFolders.sumOf { countEntries(it.id) }
         }
         val entryCount = countEntries(folder.id)
-        val message = if (entryCount > 0) {
-            "Delete \"${folder.name}\" and its $entryCount site(s)? Those sites will be blocked again."
+        val message = if (folder.isCurated) {
+            if (entryCount > 0) {
+                "Delete curated folder \"${folder.name}\" and its $entryCount copied site(s)? Original entries will remain in their source folders."
+            } else {
+                "Delete empty curated folder \"${folder.name}\"?"
+            }
         } else {
-            "Delete empty folder \"${folder.name}\"?"
+            if (entryCount > 0) {
+                "Delete \"${folder.name}\" and its $entryCount site(s)? Those sites will be blocked again."
+            } else {
+                "Delete empty folder \"${folder.name}\"?"
+            }
         }
 
         AlertDialog.Builder(this)
@@ -874,6 +1174,136 @@ class SettingsActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun showCreateCuratedFolderDialog() {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 16)
+        }
+
+        val nameInput = EditText(this).apply {
+            hint = "Folder name"
+            setText("Curated")
+        }
+        layout.addView(nameInput)
+
+        val iconLabel = TextView(this).apply {
+            text = "Select Icon"
+            textSize = 14f
+            setPadding(0, 24, 0, 8)
+        }
+        layout.addView(iconLabel)
+
+        val emojis = listOf("⭐", "📌", "🎯", "🔥", "💎", "📺", "🎬", "📋", "🗂️", "✨", "🏆", "❤️", "📚", "🎵", "🌟", "👀")
+        var selectedEmoji = "⭐"
+        val dp = resources.displayMetrics.density
+        val emojiGrid = android.widget.GridLayout(this).apply {
+            columnCount = 8
+            setPadding(0, 4, 0, 16)
+        }
+        val emojiViews = mutableListOf<TextView>()
+        for (emoji in emojis) {
+            val emojiBtn = TextView(this).apply {
+                text = emoji
+                textSize = 22f
+                gravity = android.view.Gravity.CENTER
+                val size = (40 * dp).toInt()
+                layoutParams = android.widget.GridLayout.LayoutParams().apply {
+                    width = size
+                    height = size
+                    setMargins((2 * dp).toInt(), (2 * dp).toInt(), (2 * dp).toInt(), (2 * dp).toInt())
+                }
+                val bg = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = 8 * dp
+                    setColor(if (emoji == selectedEmoji) 0x302196F3 else 0x00000000)
+                }
+                background = bg
+                setOnClickListener {
+                    selectedEmoji = emoji
+                    for (ev in emojiViews) {
+                        val evBg = ev.background as? android.graphics.drawable.GradientDrawable
+                        evBg?.setColor(if (ev.text == emoji) 0x302196F3 else 0x00000000)
+                    }
+                }
+            }
+            emojiViews.add(emojiBtn)
+            emojiGrid.addView(emojiBtn)
+        }
+        layout.addView(emojiGrid)
+
+        AlertDialog.Builder(this)
+            .setTitle("New Curated Folder")
+            .setView(layout)
+            .setPositiveButton("Create") { _, _ ->
+                val name = nameInput.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    WhitelistManager.createCuratedFolder(this, name, selectedEmoji)
+                    refreshList()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showSettingsPasswordDialogThen(onSuccess: () -> Unit) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 0)
+        }
+        val passwordInput = EditText(this).apply {
+            hint = "Enter password"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            filters = arrayOf(InputFilter.LengthFilter(10))
+        }
+        layout.addView(passwordInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Verify Password")
+            .setView(layout)
+            .setCancelable(false)
+            .setPositiveButton("OK", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+            .apply {
+                setOnShowListener {
+                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val password = passwordInput.text.toString()
+                        if (PasswordManager.verifyPassword(this@SettingsActivity, password)) {
+                            dismiss()
+                            onSuccess()
+                        } else {
+                            passwordInput.error = "Incorrect password"
+                        }
+                    }
+                }
+                show()
+            }
+    }
+
+    private fun settingsAttemptAddToCurated(entry: WhitelistEntry, curatedFolder: Folder) {
+        if (curatedFolder.preventEditWithoutPassword) {
+            showSettingsPasswordDialogThen {
+                settingsDoAddToCurated(entry, curatedFolder)
+            }
+            return
+        }
+        settingsDoAddToCurated(entry, curatedFolder)
+    }
+
+    private fun settingsDoAddToCurated(entry: WhitelistEntry, curatedFolder: Folder) {
+        val currentCount = WhitelistManager.getEntriesInFolder(this, curatedFolder.id).size
+        if (curatedFolder.maxSites != null && currentCount >= curatedFolder.maxSites) {
+            Toast.makeText(this, "Curated folder is full (max ${curatedFolder.maxSites} sites). Remove a site first.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val success = WhitelistManager.copyEntryToCuratedFolder(this, entry.url, curatedFolder.id)
+        if (success) {
+            Toast.makeText(this, "Added to ${curatedFolder.name}", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Already in ${curatedFolder.name}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private sealed class SettingsItem {
@@ -902,6 +1332,7 @@ class SettingsActivity : AppCompatActivity() {
             val nameView: TextView = view.findViewById(android.R.id.text1)
             val deleteButton: ImageButton = view.findViewById(android.R.id.button1)
             val arrowView: TextView = view.findViewById(android.R.id.summary)
+            val emojiView: TextView? = view.findViewWithTag("emojiIcon")
         }
 
         class EntryViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -937,6 +1368,16 @@ class SettingsActivity : AppCompatActivity() {
                             marginEnd = 16
                         }
                     }
+                    val emojiText = TextView(parent.context).apply {
+                        tag = "emojiIcon"
+                        textSize = 24f
+                        val size = (32 * parent.context.resources.displayMetrics.density).toInt()
+                        layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                            marginEnd = 16
+                        }
+                        gravity = android.view.Gravity.CENTER
+                        visibility = View.GONE
+                    }
                     val text = TextView(parent.context).apply {
                         id = android.R.id.text1
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -957,6 +1398,7 @@ class SettingsActivity : AppCompatActivity() {
                         layoutParams = LinearLayout.LayoutParams(size, LinearLayout.LayoutParams.WRAP_CONTENT)
                     }
                     layout.addView(icon)
+                    layout.addView(emojiText)
                     layout.addView(text)
                     layout.addView(deleteBtn)
                     layout.addView(arrow)
@@ -1005,6 +1447,14 @@ class SettingsActivity : AppCompatActivity() {
                 is SettingsItem.FolderItem -> {
                     val vh = holder as FolderViewHolder
                     vh.nameView.text = item.folder.name
+                    if (item.folder.isCurated && item.folder.iconEmoji != null) {
+                        vh.iconView.visibility = View.GONE
+                        vh.emojiView?.visibility = View.VISIBLE
+                        vh.emojiView?.text = item.folder.iconEmoji
+                    } else {
+                        vh.iconView.visibility = View.VISIBLE
+                        vh.emojiView?.visibility = View.GONE
+                    }
                     vh.itemView.setOnClickListener { onFolderClick(item.folder) }
                     vh.itemView.setOnLongClickListener {
                         onFolderLongPress(item.folder)
