@@ -10,7 +10,8 @@ data class Folder(
     val name: String,
     val parentId: String?,
     val sortOrder: Int = 0,
-    val hidden: Boolean = false
+    val hidden: Boolean = false,
+    val blockedUntil: Long? = null
 )
 
 object WhitelistManager {
@@ -144,7 +145,8 @@ object WhitelistManager {
                 name = obj.getString("name"),
                 parentId = obj.optString("parentId", null).takeIf { it?.isNotEmpty() == true },
                 sortOrder = obj.optInt("sortOrder", 0),
-                hidden = obj.optBoolean("hidden", false)
+                hidden = obj.optBoolean("hidden", false),
+                blockedUntil = obj.optLong("blockedUntil", 0).takeIf { it > 0 }
             ))
         }
         return list
@@ -339,6 +341,87 @@ object WhitelistManager {
         return isFolderEffectivelyHidden(context, folderId)
     }
 
+    fun blockFolder(context: Context, folderId: String, durationMillis: Long) {
+        val list = getFolders(context).toMutableList()
+        val index = list.indexOfFirst { it.id == folderId }
+        if (index != -1) {
+            list[index] = list[index].copy(blockedUntil = System.currentTimeMillis() + durationMillis)
+            saveFolders(context, list)
+        }
+    }
+
+    fun unblockFolder(context: Context, folderId: String) {
+        val list = getFolders(context).toMutableList()
+        val index = list.indexOfFirst { it.id == folderId }
+        if (index != -1) {
+            list[index] = list[index].copy(blockedUntil = null)
+            saveFolders(context, list)
+        }
+    }
+
+    fun isFolderBlocked(context: Context, folderId: String): Boolean {
+        val folder = getFolders(context).find { it.id == folderId } ?: return false
+        val blockedUntil = folder.blockedUntil ?: return false
+        if (System.currentTimeMillis() >= blockedUntil) {
+            unblockFolder(context, folderId)
+            return false
+        }
+        return true
+    }
+
+    fun isFolderEffectivelyBlocked(context: Context, folderId: String): Boolean {
+        val allFolders = getFolders(context)
+        var currentId: String? = folderId
+        while (currentId != null) {
+            val folder = allFolders.find { it.id == currentId } ?: return false
+            val blockedUntil = folder.blockedUntil
+            if (blockedUntil != null) {
+                if (System.currentTimeMillis() >= blockedUntil) {
+                    unblockFolder(context, currentId)
+                } else {
+                    return true
+                }
+            }
+            currentId = folder.parentId
+        }
+        return false
+    }
+
+    fun getFolderBlockTimeRemaining(context: Context, folderId: String): Long {
+        val folder = getFolders(context).find { it.id == folderId } ?: return 0
+        val blockedUntil = folder.blockedUntil ?: return 0
+        return (blockedUntil - System.currentTimeMillis()).coerceAtLeast(0)
+    }
+
+    fun isUrlInBlockedFolder(context: Context, url: String): Pair<Boolean, String?> {
+        val normalizedUrl = normalizeUrl(url)
+        val whitelist = getWhitelist(context)
+        for (entry in whitelist) {
+            val normalizedEntry = normalizeUrl(entry.url)
+            val matches = if (!normalizedEntry.contains("/")) {
+                val urlDomain = normalizedUrl.substringBefore("/").substringBefore("?")
+                urlDomain == normalizedEntry || urlDomain.endsWith(".$normalizedEntry")
+            } else {
+                normalizedUrl.startsWith(normalizedEntry)
+            }
+            if (matches && entry.folderId != null && isFolderEffectivelyBlocked(context, entry.folderId)) {
+                val allFolders = getFolders(context)
+                var currentId: String? = entry.folderId
+                var blockedFolderName: String? = null
+                while (currentId != null) {
+                    val folder = allFolders.find { it.id == currentId } ?: break
+                    if (folder.blockedUntil != null && System.currentTimeMillis() < folder.blockedUntil) {
+                        blockedFolderName = folder.name
+                        break
+                    }
+                    currentId = folder.parentId
+                }
+                return Pair(true, blockedFolderName)
+            }
+        }
+        return Pair(false, null)
+    }
+
     private fun saveFolders(context: Context, list: List<Folder>) {
         val array = JSONArray()
         for (folder in list) {
@@ -348,6 +431,7 @@ object WhitelistManager {
             if (folder.parentId != null) obj.put("parentId", folder.parentId)
             obj.put("sortOrder", folder.sortOrder)
             if (folder.hidden) obj.put("hidden", true)
+            if (folder.blockedUntil != null) obj.put("blockedUntil", folder.blockedUntil)
             array.put(obj)
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

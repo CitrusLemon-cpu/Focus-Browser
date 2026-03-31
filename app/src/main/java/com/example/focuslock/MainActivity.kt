@@ -20,12 +20,16 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.text.InputFilter
+import android.text.InputType
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
+import com.google.android.material.button.MaterialButton
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -209,14 +213,28 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     urlString
                 }
-                return if (WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
-                    false
+                if (WhitelistManager.isUrlAllowed(this@MainActivity, urlToCheck)) {
+                    val (inBlocked, blockedFolderName) = WhitelistManager.isUrlInBlockedFolder(this@MainActivity, urlToCheck)
+                    return if (inBlocked) {
+                        view?.post {
+                            showHome()
+                            val remaining = blockedFolderName?.let { name ->
+                                val folders = WhitelistManager.getFolders(this@MainActivity)
+                                val folder = folders.find { it.name == name }
+                                folder?.let { WhitelistManager.getFolderBlockTimeRemaining(this@MainActivity, it.id) } ?: 0L
+                            } ?: 0L
+                            showFolderBlockedDialog(urlString, blockedFolderName, remaining)
+                        }
+                        true
+                    } else {
+                        false
+                    }
                 } else {
                     view?.post {
                         showHome()
                         showBlockedDialog(urlString)
                     }
-                    true
+                    return true
                 }
             }
 
@@ -256,6 +274,19 @@ class MainActivity : AppCompatActivity() {
                         view?.post {
                             showHome()
                             showBlockedDialog(url)
+                        }
+                        return
+                    }
+                    val (inBlocked, blockedFolderName) = WhitelistManager.isUrlInBlockedFolder(this@MainActivity, urlToCheck)
+                    if (inBlocked) {
+                        view?.post {
+                            showHome()
+                            val remaining = blockedFolderName?.let { name ->
+                                val folders = WhitelistManager.getFolders(this@MainActivity)
+                                val folder = folders.find { it.name == name }
+                                folder?.let { WhitelistManager.getFolderBlockTimeRemaining(this@MainActivity, it.id) } ?: 0L
+                            } ?: 0L
+                            showFolderBlockedDialog(url, blockedFolderName, remaining)
                         }
                         return
                     }
@@ -591,8 +622,25 @@ currentEmbedVideoId = null
                 onEntryClick = { entry ->
                     val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) entry.url
                     else "https://${entry.url}"
-                    showWebView()
-                    binding.webView.loadUrl(url)
+                    if (entry.folderId != null && WhitelistManager.isFolderEffectivelyBlocked(this, entry.folderId)) {
+                        val allFolders = WhitelistManager.getFolders(this)
+                        var currentId: String? = entry.folderId
+                        var blockedFolderName: String? = null
+                        var remaining = 0L
+                        while (currentId != null) {
+                            val f = allFolders.find { it.id == currentId } ?: break
+                            if (f.blockedUntil != null && System.currentTimeMillis() < f.blockedUntil) {
+                                blockedFolderName = f.name
+                                remaining = WhitelistManager.getFolderBlockTimeRemaining(this, f.id)
+                                break
+                            }
+                            currentId = f.parentId
+                        }
+                        showFolderBlockedDialog(url, blockedFolderName, remaining)
+                    } else {
+                        showWebView()
+                        binding.webView.loadUrl(url)
+                    }
                 },
                 onEntryLongPress = { entry -> showEntryMetadataDialog(entry) },
                 onEntryDelete = { entry ->
@@ -877,6 +925,91 @@ currentEmbedVideoId = null
         hiddenRow.addView(hiddenSwitch)
         layout.addView(hiddenRow)
 
+        val blockLabel = TextView(this).apply {
+            text = "Block Folder"
+            textSize = 12f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, 32, 0, 8)
+        }
+        layout.addView(blockLabel)
+
+        if (WhitelistManager.isFolderBlocked(this, folder.id)) {
+            val remaining = WhitelistManager.getFolderBlockTimeRemaining(this, folder.id)
+            val hours = remaining / 3600000
+            val minutes = (remaining % 3600000) / 60000
+            val statusText = TextView(this).apply {
+                text = "\uD83D\uDD12 Blocked \u2014 ${hours}h ${minutes}m remaining"
+                textSize = 14f
+                setPadding(0, 8, 0, 8)
+            }
+            layout.addView(statusText)
+
+            val unblockBtn = MaterialButton(this).apply {
+                text = "Unblock (requires password)"
+                setOnClickListener {
+                    showUnblockPasswordDialog(folder.id)
+                }
+            }
+            layout.addView(unblockBtn)
+        } else {
+            val durationOptions = listOf(
+                "30 minutes" to 30 * 60 * 1000L,
+                "1 hour" to 60 * 60 * 1000L,
+                "2 hours" to 2 * 60 * 60 * 1000L,
+                "4 hours" to 4 * 60 * 60 * 1000L,
+                "8 hours" to 8 * 60 * 60 * 1000L,
+                "12 hours" to 12 * 60 * 60 * 1000L
+            )
+            var selectedDuration = durationOptions[0].second
+
+            val radioGroup = RadioGroup(this).apply {
+                orientation = RadioGroup.VERTICAL
+            }
+            for ((index, option) in durationOptions.withIndex()) {
+                val rb = RadioButton(this).apply {
+                    text = option.first
+                    id = View.generateViewId()
+                    if (index == 0) isChecked = true
+                }
+                radioGroup.addView(rb)
+            }
+            radioGroup.setOnCheckedChangeListener { group, checkedId ->
+                for ((index, option) in durationOptions.withIndex()) {
+                    if (group.getChildAt(index).id == checkedId) {
+                        selectedDuration = option.second
+                        break
+                    }
+                }
+            }
+            layout.addView(radioGroup)
+
+            val blockBtn = MaterialButton(this)
+            blockBtn.text = "Block"
+            layout.addView(blockBtn)
+
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("Edit Folder")
+                .setView(layout)
+                .setPositiveButton("Save") { _, _ ->
+                    val newName = nameInput.text.toString().trim()
+                    if (newName.isNotEmpty()) {
+                        WhitelistManager.renameFolder(this, folder.id, newName)
+                    }
+                    WhitelistManager.setFolderHidden(this, folder.id, hiddenSwitch.isChecked)
+                    refreshHomeList()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+
+            blockBtn.setOnClickListener {
+                WhitelistManager.blockFolder(this@MainActivity, folder.id, selectedDuration)
+                dialog.dismiss()
+                refreshHomeList()
+                android.widget.Toast.makeText(this@MainActivity, "Folder blocked", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
         AlertDialog.Builder(this)
             .setTitle("Edit Folder")
             .setView(layout)
@@ -889,6 +1022,56 @@ currentEmbedVideoId = null
                 refreshHomeList()
             }
             .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showUnblockPasswordDialog(folderId: String) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 0)
+        }
+
+        val passwordInput = EditText(this).apply {
+            hint = "Enter password"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            filters = arrayOf(InputFilter.LengthFilter(10))
+        }
+        layout.addView(passwordInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Verify Password")
+            .setView(layout)
+            .setCancelable(false)
+            .setPositiveButton("Unblock", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+            .apply {
+                setOnShowListener {
+                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val password = passwordInput.text.toString()
+                        if (PasswordManager.verifyPassword(this@MainActivity, password)) {
+                            WhitelistManager.unblockFolder(this@MainActivity, folderId)
+                            dismiss()
+                            refreshHomeList()
+                            android.widget.Toast.makeText(this@MainActivity, "Folder unblocked", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            passwordInput.error = "Incorrect password"
+                        }
+                    }
+                }
+                show()
+            }
+    }
+
+    private fun showFolderBlockedDialog(url: String, folderName: String?, timeRemaining: Long) {
+        val hours = timeRemaining / 3600000
+        val minutes = (timeRemaining % 3600000) / 60000
+        val timeStr = if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+
+        AlertDialog.Builder(this)
+            .setTitle("Folder Temporarily Blocked")
+            .setMessage("The folder \"${folderName ?: "Unknown"}\" is blocked.\n\nTime remaining: $timeStr\n\nURL: $url")
+            .setPositiveButton("OK", null)
             .show()
     }
 
@@ -1511,9 +1694,23 @@ currentEmbedVideoId = null
             when (val item = currentItems[position]) {
                 is HomeItem.FolderItem -> {
                     val vh = holder as FolderViewHolder
-                    vh.textView.text = item.folder.name
-                    val folderAlpha = if (item.folder.hidden) 0.5f else 1.0f
+                    val isBlocked = WhitelistManager.isFolderBlocked(holder.itemView.context, item.folder.id)
+                    if (isBlocked) {
+                        val remaining = WhitelistManager.getFolderBlockTimeRemaining(holder.itemView.context, item.folder.id)
+                        val hrs = remaining / 3600000
+                        val mins = (remaining % 3600000) / 60000
+                        val timeStr = if (hrs > 0) "${hrs}h ${mins}m" else "${mins}m"
+                        vh.textView.text = "\uD83D\uDD12 ${item.folder.name} ($timeStr)"
+                    } else {
+                        vh.textView.text = item.folder.name
+                    }
+                    val folderAlpha = if (item.folder.hidden) 0.5f else if (isBlocked) 0.6f else 1.0f
                     vh.itemView.alpha = folderAlpha
+                    if (isBlocked) {
+                        vh.iconView.setColorFilter(0xFFFF5722.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+                    } else {
+                        vh.iconView.clearColorFilter()
+                    }
                     vh.itemView.setOnClickListener { onFolderClick(item.folder) }
                     vh.itemView.setOnLongClickListener {
                         onFolderLongPress(item.folder)
