@@ -624,6 +624,7 @@ object WhitelistManager {
     fun isUrlBlockedByLockIn(context: Context, url: String): Boolean {
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
+        val folders = getFolders(context)
         var anyBlocked = false
         for (entry in whitelist) {
             val normalizedEntry = normalizeUrl(entry.url)
@@ -635,7 +636,16 @@ object WhitelistManager {
             }
             if (!matches) continue
             if (entry.folderId == null) return false
-            val effectiveId = getEffectiveLockInFolderId(context, entry.folderId)
+            val entryFolder = folders.find { it.id == entry.folderId }
+            val folderIdForLockIn = if (entryFolder?.isCurated == true) {
+                if (entryFolder.ignoreLockInMode) {
+                    return false
+                }
+                entry.sourceFolderId ?: entry.folderId
+            } else {
+                entry.folderId
+            }
+            val effectiveId = getEffectiveLockInFolderId(context, folderIdForLockIn)
             if (effectiveId == null) return false
             val session = getLockInSession(context, effectiveId)
             if (session == null) return false
@@ -648,6 +658,7 @@ object WhitelistManager {
     fun getLockInBlockTimeRemaining(context: Context, url: String): Long {
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
+        val folders = getFolders(context)
         var maxRemaining = 0L
         for (entry in whitelist) {
             val normalizedEntry = normalizeUrl(entry.url)
@@ -659,7 +670,16 @@ object WhitelistManager {
             }
             if (!matches) continue
             if (entry.folderId == null) return 0
-            val effectiveId = getEffectiveLockInFolderId(context, entry.folderId)
+            val entryFolder = folders.find { it.id == entry.folderId }
+            val folderIdForLockIn = if (entryFolder?.isCurated == true) {
+                if (entryFolder.ignoreLockInMode) {
+                    return 0
+                }
+                entry.sourceFolderId ?: entry.folderId
+            } else {
+                entry.folderId
+            }
+            val effectiveId = getEffectiveLockInFolderId(context, folderIdForLockIn)
             if (effectiveId == null) return 0
             val session = getLockInSession(context, effectiveId) ?: return 0
             if (normalizeUrl(session.first!!) == normalizedEntry) return 0
