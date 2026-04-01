@@ -2015,7 +2015,7 @@ currentEmbedVideoId = null
 <div id="desc-section" style="border-top: 1px solid #1e1e1e; margin-top: 4px;">
   <div id="desc-view" style="padding: 12px 16px; display: flex; align-items: flex-start; gap: 10px;">
     <div id="descText" style="flex: 1; font-size: 14px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; ${if (!description.isNullOrEmpty()) "color: #ccc;" else "color: #555; font-style: italic;"}">${ if (!description.isNullOrEmpty()) description.replace("<", "&lt;").replace("\n", "<br>") else "No note \u2014 tap Edit to add one"}</div>
-    <button onclick="enterDescEditMode()" style="background: #2a2a2a; color: #aaa; border: 1px solid #444; border-radius: 6px; padding: 5px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">\u270f Edit</button>
+    <button onclick="enterDescEditMode()" style="background: #2a2a2a; color: #aaa; border: 1px solid #444; border-radius: 6px; padding: 5px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">Edit</button>
   </div>
   <div id="desc-edit" style="padding: 12px 16px; display: none;">
     <textarea id="descTextarea" oninput="FocusBridge.onDescriptionTextChanged(this.value)" style="width: 100%; background: #1a1a1a; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 10px; font-size: 14px; line-height: 1.5; resize: vertical; min-height: 80px; box-sizing: border-box; font-family: -apple-system, sans-serif; outline: none;"></textarea>

@@ -22,7 +22,8 @@ object VideoProgressManager {
     }
 
     fun extractVideoId(url: String): String? {
-        val uri = try { Uri.parse(url) } catch (_: Exception) { return null }
+        val fullUrl = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$url"
+        val uri = try { Uri.parse(fullUrl) } catch (_: Exception) { return null }
         val host = uri.host?.lowercase() ?: return null
         if (host.contains("youtube.com") || host.contains("youtu.be") ||
             invidiousHosts.any { host == it || host.endsWith(".$it") }) {
