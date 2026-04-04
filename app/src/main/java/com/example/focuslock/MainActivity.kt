@@ -156,6 +156,9 @@ class MainActivity : AppCompatActivity() {
                 binding.swipeRefreshLayout.isRefreshing = false
             }
         }
+        binding.swipeRefreshLayout.setOnChildScrollUpCallback { _, _ ->
+            binding.webView.canScrollVertically(-1)
+        }
 
         binding.switchShowHidden.isChecked = false
         binding.switchShowHidden.setOnCheckedChangeListener { _, isChecked ->
