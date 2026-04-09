@@ -242,6 +242,17 @@
                     android:src="@android:drawable/ic_menu_manage"
                     android:contentDescription="Settings" />
 
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/fabSandboxAdd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|start"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginBottom="80dp"
+                    android:src="@android:drawable/btn_star_big_on"
+                    android:contentDescription="Add current site to whitelist"
+                    android:visibility="gone" />
+
             </FrameLayout>
 
         </LinearLayout>

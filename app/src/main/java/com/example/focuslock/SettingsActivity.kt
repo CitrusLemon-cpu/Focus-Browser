@@ -76,6 +76,24 @@ class SettingsActivity : AppCompatActivity() {
             showCreateCuratedFolderDialog()
         }
 
+        updateSandboxButton()
+        binding.btnSandboxMode.setOnClickListener {
+            if (SandboxManager.isSandboxActive(this)) {
+                AlertDialog.Builder(this)
+                    .setTitle("Sandbox Mode Active")
+                    .setMessage("Sandbox mode is running. Turn it off now?")
+                    .setPositiveButton("Turn Off") { _, _ ->
+                        SandboxManager.endSandbox(this)
+                        updateSandboxButton()
+                        Toast.makeText(this, "Sandbox mode ended", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Keep Active", null)
+                    .show()
+            } else {
+                showSandboxDurationDialog()
+            }
+        }
+
         binding.switchHideArchiveIfLockIn.isChecked = ArchiveManager.isHideIfLockInActive(this)
         binding.switchHideArchiveIfLockIn.setOnCheckedChangeListener { _, isChecked ->
             ArchiveManager.setHideIfLockInActive(this, isChecked)
@@ -164,6 +182,70 @@ class SettingsActivity : AppCompatActivity() {
             }
             override fun afterTextChanged(s: android.text.Editable?) {}
         })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::binding.isInitialized) {
+            updateSandboxButton()
+        }
+    }
+
+    private fun updateSandboxButton() {
+        if (SandboxManager.isSandboxActive(this)) {
+            val remaining = SandboxManager.getTimeRemaining(this)
+            val hours = remaining / 3_600_000
+            val minutes = (remaining % 3_600_000) / 60_000
+            binding.btnSandboxMode.text = "Sandbox Active — ${hours}h ${minutes}m left (tap to end)"
+        } else {
+            binding.btnSandboxMode.text = "Turn On Sandbox Mode"
+        }
+    }
+
+    private fun showSandboxDurationDialog() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 0)
+        }
+
+        val label = android.widget.TextView(this).apply {
+            text = "How long should sandbox mode be active?\n(1–12 hours)"
+            textSize = 14f
+            setPadding(0, 0, 0, 16)
+        }
+
+        val hoursInput = android.widget.EditText(this).apply {
+            hint = "Hours (default: 1)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf(android.text.InputFilter.LengthFilter(2))
+        }
+
+        layout.addView(label)
+        layout.addView(hoursInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Sandbox Mode Duration")
+            .setView(layout)
+            .setPositiveButton("Start", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+            .apply {
+                setOnShowListener {
+                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val rawHours = hoursInput.text.toString().toIntOrNull() ?: 1
+                        val hours = rawHours.coerceIn(1, 12)
+                        SandboxManager.startSandbox(this@SettingsActivity, hours * 3_600_000L)
+                        updateSandboxButton()
+                        Toast.makeText(
+                            this@SettingsActivity,
+                            "Sandbox mode active for $hours hour${if (hours == 1) "" else "s"}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        dismiss()
+                    }
+                }
+                show()
+            }
     }
 
     private fun buildSettingsList(): List<SettingsItem> {

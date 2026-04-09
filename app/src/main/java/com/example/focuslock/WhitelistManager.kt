@@ -130,6 +130,8 @@ object WhitelistManager {
     }
 
     fun isUrlAllowed(context: Context, url: String): Boolean {
+        if (SandboxManager.isSandboxActive(context)) return true
+
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
 

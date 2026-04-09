@@ -4,7 +4,24 @@
             "outputFile": "com.example.focuslock.app-mergeDebugResources-1:/values-iw/values-iw.xml",
             "map": [
                 {
-                    "source": "/root/.gradle/caches/9.3.1/transforms/7a2ec6fe9bcd0d5949b4977e12a88447/transformed/appcompat-1.7.1/res/values-iw/values-iw.xml",
+                    "source": "/root/.gradle/caches/9.3.1/transforms/c4eddd15ab471a61d409faafbe38f4d4/transformed/navigation-ui-2.6.0/res/values-iw/values-iw.xml",
+                    "from": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,161",
+                        "endColumns": "105,119",
+                        "endOffsets": "156,276"
+                    },
+                    "to": {
+                        "startLines": "117,118",
+                        "startColumns": "4,4",
+                        "startOffsets": "9496,9602",
+                        "endColumns": "105,119",
+                        "endOffsets": "9597,9717"
+                    }
+                },
+                {
+                    "source": "/root/.gradle/caches/9.3.1/transforms/3cd27c8b8f1ab69aafe853b469507965/transformed/appcompat-1.7.1/res/values-iw/values-iw.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
@@ -21,7 +38,7 @@
                     }
                 },
                 {
-                    "source": "/root/.gradle/caches/9.3.1/transforms/dcb87602d077908474c259b7c22c642c/transformed/core-1.18.0/res/values-iw/values-iw.xml",
+                    "source": "/root/.gradle/caches/9.3.1/transforms/94ba62d6d3c1ed0aca447b3a817b754c/transformed/core-1.18.0/res/values-iw/values-iw.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9",
                         "startColumns": "4,4,4,4,4,4,4,4",
@@ -38,7 +55,7 @@
                     }
                 },
                 {
-                    "source": "/root/.gradle/caches/9.3.1/transforms/68abcf5f7e6876bc57552ae8deebcee7/transformed/material-1.13.0/res/values-iw/values-iw.xml",
+                    "source": "/root/.gradle/caches/9.3.1/transforms/f864c28eabd9643ab395b4a84e9b53da/transformed/material-1.13.0/res/values-iw/values-iw.xml",
                     "from": {
                         "startLines": "2,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
@@ -54,23 +71,6 @@
                         "endLines": "6,34,35,36,37,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,119,121,122,123",
                         "endColumns": "12,76,74,76,90,92,112,79,59,64,87,69,62,75,91,62,59,58,62,60,63,67,53,53,101,56,58,53,67,110,80,74,86,79,81,131,70,72,123,87,75,52,53,65,72,75,70,77,69,74,81,67,100,84,69,89,90,73,72,88,50,80,66,81,84,61,63,62,67,93,80,89,82,81,88,56,57,74,81,74,75",
                         "endOffsets": "356,3089,3164,3241,3332,4122,4235,4315,4375,4440,4528,4598,4661,4737,4829,4892,4952,5011,5074,5135,5199,5267,5321,5375,5477,5534,5593,5647,5715,5826,5907,5982,6069,6149,6231,6363,6434,6507,6631,6719,6795,6848,6902,6968,7041,7117,7188,7266,7336,7411,7493,7561,7662,7747,7817,7907,7998,8072,8145,8234,8285,8366,8433,8515,8600,8662,8726,8789,8857,8951,9032,9122,9205,9287,9376,9433,9491,9792,9956,10031,10107"
-                    }
-                },
-                {
-                    "source": "/root/.gradle/caches/9.3.1/transforms/7297e563ae0723299b8f82aba3ebdbc1/transformed/navigation-ui-2.6.0/res/values-iw/values-iw.xml",
-                    "from": {
-                        "startLines": "2,3",
-                        "startColumns": "4,4",
-                        "startOffsets": "55,161",
-                        "endColumns": "105,119",
-                        "endOffsets": "156,276"
-                    },
-                    "to": {
-                        "startLines": "117,118",
-                        "startColumns": "4,4",
-                        "startOffsets": "9496,9602",
-                        "endColumns": "105,119",
-                        "endOffsets": "9597,9717"
                     }
                 }
             ]

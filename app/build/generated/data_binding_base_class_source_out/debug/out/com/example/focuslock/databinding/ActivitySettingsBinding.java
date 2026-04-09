@@ -4,8 +4,11 @@ package com.example.focuslock.databinding;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.Toolbar;
@@ -15,6 +18,7 @@ import androidx.viewbinding.ViewBinding;
 import androidx.viewbinding.ViewBindings;
 import com.example.focuslock.R;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.switchmaterial.SwitchMaterial;
 import java.lang.NullPointerException;
 import java.lang.Override;
 import java.lang.String;
@@ -22,6 +26,12 @@ import java.lang.String;
 public final class ActivitySettingsBinding implements ViewBinding {
   @NonNull
   private final DrawerLayout rootView;
+
+  @NonNull
+  public final LinearLayout archiveLockInDurationContainer;
+
+  @NonNull
+  public final EditText archiveLockInDurationInput;
 
   @NonNull
   public final LinearLayout breadcrumbContainer;
@@ -42,33 +52,88 @@ public final class ActivitySettingsBinding implements ViewBinding {
   public final MaterialButton btnCreateCurated;
 
   @NonNull
+  public final MaterialButton btnSandboxMode;
+
+  @NonNull
+  public final ImageButton btnSettingsArchiveBack;
+
+  @NonNull
+  public final MaterialButton btnSettingsArchiveDateView;
+
+  @NonNull
   public final LinearLayout hiddenSettingsDrawer;
 
   @NonNull
   public final RecyclerView recyclerView;
 
   @NonNull
+  public final LinearLayout settingsArchiveBreadcrumbContainer;
+
+  @NonNull
+  public final HorizontalScrollView settingsArchiveBreadcrumbScroll;
+
+  @NonNull
+  public final TextView settingsArchiveEmptyMessage;
+
+  @NonNull
+  public final RecyclerView settingsArchiveList;
+
+  @NonNull
+  public final LinearLayout settingsArchiveScreen;
+
+  @NonNull
+  public final EditText settingsArchiveSearchBar;
+
+  @NonNull
   public final DrawerLayout settingsDrawerLayout;
+
+  @NonNull
+  public final SwitchMaterial switchArchiveLockIn;
+
+  @NonNull
+  public final SwitchMaterial switchHideArchiveIfLockIn;
 
   @NonNull
   public final Toolbar toolbar;
 
   private ActivitySettingsBinding(@NonNull DrawerLayout rootView,
-      @NonNull LinearLayout breadcrumbContainer, @NonNull HorizontalScrollView breadcrumbScroll,
-      @NonNull MaterialButton btnAdd, @NonNull MaterialButton btnChangePassword,
-      @NonNull MaterialButton btnClearData, @NonNull MaterialButton btnCreateCurated,
+      @NonNull LinearLayout archiveLockInDurationContainer,
+      @NonNull EditText archiveLockInDurationInput, @NonNull LinearLayout breadcrumbContainer,
+      @NonNull HorizontalScrollView breadcrumbScroll, @NonNull MaterialButton btnAdd,
+      @NonNull MaterialButton btnChangePassword, @NonNull MaterialButton btnClearData,
+      @NonNull MaterialButton btnCreateCurated, @NonNull MaterialButton btnSandboxMode,
+      @NonNull ImageButton btnSettingsArchiveBack,
+      @NonNull MaterialButton btnSettingsArchiveDateView,
       @NonNull LinearLayout hiddenSettingsDrawer, @NonNull RecyclerView recyclerView,
-      @NonNull DrawerLayout settingsDrawerLayout, @NonNull Toolbar toolbar) {
+      @NonNull LinearLayout settingsArchiveBreadcrumbContainer,
+      @NonNull HorizontalScrollView settingsArchiveBreadcrumbScroll,
+      @NonNull TextView settingsArchiveEmptyMessage, @NonNull RecyclerView settingsArchiveList,
+      @NonNull LinearLayout settingsArchiveScreen, @NonNull EditText settingsArchiveSearchBar,
+      @NonNull DrawerLayout settingsDrawerLayout, @NonNull SwitchMaterial switchArchiveLockIn,
+      @NonNull SwitchMaterial switchHideArchiveIfLockIn, @NonNull Toolbar toolbar) {
     this.rootView = rootView;
+    this.archiveLockInDurationContainer = archiveLockInDurationContainer;
+    this.archiveLockInDurationInput = archiveLockInDurationInput;
     this.breadcrumbContainer = breadcrumbContainer;
     this.breadcrumbScroll = breadcrumbScroll;
     this.btnAdd = btnAdd;
     this.btnChangePassword = btnChangePassword;
     this.btnClearData = btnClearData;
     this.btnCreateCurated = btnCreateCurated;
+    this.btnSandboxMode = btnSandboxMode;
+    this.btnSettingsArchiveBack = btnSettingsArchiveBack;
+    this.btnSettingsArchiveDateView = btnSettingsArchiveDateView;
     this.hiddenSettingsDrawer = hiddenSettingsDrawer;
     this.recyclerView = recyclerView;
+    this.settingsArchiveBreadcrumbContainer = settingsArchiveBreadcrumbContainer;
+    this.settingsArchiveBreadcrumbScroll = settingsArchiveBreadcrumbScroll;
+    this.settingsArchiveEmptyMessage = settingsArchiveEmptyMessage;
+    this.settingsArchiveList = settingsArchiveList;
+    this.settingsArchiveScreen = settingsArchiveScreen;
+    this.settingsArchiveSearchBar = settingsArchiveSearchBar;
     this.settingsDrawerLayout = settingsDrawerLayout;
+    this.switchArchiveLockIn = switchArchiveLockIn;
+    this.switchHideArchiveIfLockIn = switchHideArchiveIfLockIn;
     this.toolbar = toolbar;
   }
 
@@ -99,6 +164,18 @@ public final class ActivitySettingsBinding implements ViewBinding {
     // This is done to optimize the compiled bytecode for size and performance.
     int id;
     missingId: {
+      id = R.id.archiveLockInDurationContainer;
+      LinearLayout archiveLockInDurationContainer = ViewBindings.findChildViewById(rootView, id);
+      if (archiveLockInDurationContainer == null) {
+        break missingId;
+      }
+
+      id = R.id.archiveLockInDurationInput;
+      EditText archiveLockInDurationInput = ViewBindings.findChildViewById(rootView, id);
+      if (archiveLockInDurationInput == null) {
+        break missingId;
+      }
+
       id = R.id.breadcrumbContainer;
       LinearLayout breadcrumbContainer = ViewBindings.findChildViewById(rootView, id);
       if (breadcrumbContainer == null) {
@@ -135,6 +212,24 @@ public final class ActivitySettingsBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.btnSandboxMode;
+      MaterialButton btnSandboxMode = ViewBindings.findChildViewById(rootView, id);
+      if (btnSandboxMode == null) {
+        break missingId;
+      }
+
+      id = R.id.btnSettingsArchiveBack;
+      ImageButton btnSettingsArchiveBack = ViewBindings.findChildViewById(rootView, id);
+      if (btnSettingsArchiveBack == null) {
+        break missingId;
+      }
+
+      id = R.id.btnSettingsArchiveDateView;
+      MaterialButton btnSettingsArchiveDateView = ViewBindings.findChildViewById(rootView, id);
+      if (btnSettingsArchiveDateView == null) {
+        break missingId;
+      }
+
       id = R.id.hiddenSettingsDrawer;
       LinearLayout hiddenSettingsDrawer = ViewBindings.findChildViewById(rootView, id);
       if (hiddenSettingsDrawer == null) {
@@ -147,7 +242,55 @@ public final class ActivitySettingsBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.settingsArchiveBreadcrumbContainer;
+      LinearLayout settingsArchiveBreadcrumbContainer = ViewBindings.findChildViewById(rootView, id);
+      if (settingsArchiveBreadcrumbContainer == null) {
+        break missingId;
+      }
+
+      id = R.id.settingsArchiveBreadcrumbScroll;
+      HorizontalScrollView settingsArchiveBreadcrumbScroll = ViewBindings.findChildViewById(rootView, id);
+      if (settingsArchiveBreadcrumbScroll == null) {
+        break missingId;
+      }
+
+      id = R.id.settingsArchiveEmptyMessage;
+      TextView settingsArchiveEmptyMessage = ViewBindings.findChildViewById(rootView, id);
+      if (settingsArchiveEmptyMessage == null) {
+        break missingId;
+      }
+
+      id = R.id.settingsArchiveList;
+      RecyclerView settingsArchiveList = ViewBindings.findChildViewById(rootView, id);
+      if (settingsArchiveList == null) {
+        break missingId;
+      }
+
+      id = R.id.settingsArchiveScreen;
+      LinearLayout settingsArchiveScreen = ViewBindings.findChildViewById(rootView, id);
+      if (settingsArchiveScreen == null) {
+        break missingId;
+      }
+
+      id = R.id.settingsArchiveSearchBar;
+      EditText settingsArchiveSearchBar = ViewBindings.findChildViewById(rootView, id);
+      if (settingsArchiveSearchBar == null) {
+        break missingId;
+      }
+
       DrawerLayout settingsDrawerLayout = (DrawerLayout) rootView;
+
+      id = R.id.switchArchiveLockIn;
+      SwitchMaterial switchArchiveLockIn = ViewBindings.findChildViewById(rootView, id);
+      if (switchArchiveLockIn == null) {
+        break missingId;
+      }
+
+      id = R.id.switchHideArchiveIfLockIn;
+      SwitchMaterial switchHideArchiveIfLockIn = ViewBindings.findChildViewById(rootView, id);
+      if (switchHideArchiveIfLockIn == null) {
+        break missingId;
+      }
 
       id = R.id.toolbar;
       Toolbar toolbar = ViewBindings.findChildViewById(rootView, id);
@@ -155,9 +298,14 @@ public final class ActivitySettingsBinding implements ViewBinding {
         break missingId;
       }
 
-      return new ActivitySettingsBinding((DrawerLayout) rootView, breadcrumbContainer,
-          breadcrumbScroll, btnAdd, btnChangePassword, btnClearData, btnCreateCurated,
-          hiddenSettingsDrawer, recyclerView, settingsDrawerLayout, toolbar);
+      return new ActivitySettingsBinding((DrawerLayout) rootView, archiveLockInDurationContainer,
+          archiveLockInDurationInput, breadcrumbContainer, breadcrumbScroll, btnAdd,
+          btnChangePassword, btnClearData, btnCreateCurated, btnSandboxMode, btnSettingsArchiveBack,
+          btnSettingsArchiveDateView, hiddenSettingsDrawer, recyclerView,
+          settingsArchiveBreadcrumbContainer, settingsArchiveBreadcrumbScroll,
+          settingsArchiveEmptyMessage, settingsArchiveList, settingsArchiveScreen,
+          settingsArchiveSearchBar, settingsDrawerLayout, switchArchiveLockIn,
+          switchHideArchiveIfLockIn, toolbar);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

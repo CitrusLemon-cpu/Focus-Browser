@@ -4,7 +4,24 @@
             "outputFile": "com.example.focuslock.app-mergeDebugResources-1:/values-land/values-land.xml",
             "map": [
                 {
-                    "source": "/root/.gradle/caches/9.3.1/transforms/7a2ec6fe9bcd0d5949b4977e12a88447/transformed/appcompat-1.7.1/res/values-land/values-land.xml",
+                    "source": "/home/Focus-Browser/app/src/main/res/values-land/dimens.xml",
+                    "from": {
+                        "startLines": "1",
+                        "startColumns": "4",
+                        "startOffsets": "16",
+                        "endColumns": "41",
+                        "endOffsets": "53"
+                    },
+                    "to": {
+                        "startLines": "5",
+                        "startColumns": "4",
+                        "startOffsets": "264",
+                        "endColumns": "41",
+                        "endOffsets": "301"
+                    }
+                },
+                {
+                    "source": "/root/.gradle/caches/9.3.1/transforms/3cd27c8b8f1ab69aafe853b469507965/transformed/appcompat-1.7.1/res/values-land/values-land.xml",
                     "from": {
                         "startLines": "2,3,4",
                         "startColumns": "4,4,4",
@@ -14,7 +31,7 @@
                     }
                 },
                 {
-                    "source": "/root/.gradle/caches/9.3.1/transforms/68abcf5f7e6876bc57552ae8deebcee7/transformed/material-1.13.0/res/values-land/values-land.xml",
+                    "source": "/root/.gradle/caches/9.3.1/transforms/f864c28eabd9643ab395b4a84e9b53da/transformed/material-1.13.0/res/values-land/values-land.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,31,36",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
@@ -30,23 +47,6 @@
                         "endLines": "6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,25,34,39,42",
                         "endColumns": "74,73,64,66,69,71,68,68,81,89,75,67,66,77,64,66,10,10,10,10",
                         "endOffsets": "376,450,515,582,652,724,793,862,944,1034,1110,1178,1245,1323,1388,1455,1627,2196,2465,2693"
-                    }
-                },
-                {
-                    "source": "/home/Focus-Browser/app/src/main/res/values-land/dimens.xml",
-                    "from": {
-                        "startLines": "1",
-                        "startColumns": "4",
-                        "startOffsets": "16",
-                        "endColumns": "41",
-                        "endOffsets": "53"
-                    },
-                    "to": {
-                        "startLines": "5",
-                        "startColumns": "4",
-                        "startOffsets": "264",
-                        "endColumns": "41",
-                        "endOffsets": "301"
                     }
                 }
             ]
