@@ -783,7 +783,23 @@ currentEmbedVideoId = null
         var viewStartX = 0f
         var viewStartY = 0f
         var isDragging = false
+        var isLongPressed = false
         val dragThreshold = 10f
+        val longPressHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        val longPressRunnable = Runnable {
+            isLongPressed = true
+            AlertDialog.Builder(this)
+                .setTitle("End Sandbox Mode")
+                .setMessage("End sandbox mode now?")
+                .setPositiveButton("End") { _, _ ->
+                    SandboxManager.endSandbox(this)
+                    cancelSandboxExpiry()
+                    binding.fabSandboxAdd.visibility = View.GONE
+                    android.widget.Toast.makeText(this, "Sandbox mode ended", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
 
         star.setOnTouchListener { v, event ->
             when (event.action) {
@@ -793,6 +809,8 @@ currentEmbedVideoId = null
                     viewStartX = v.x
                     viewStartY = v.y
                     isDragging = false
+                    isLongPressed = false
+                    longPressHandler.postDelayed(longPressRunnable, 500L)
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -800,6 +818,7 @@ currentEmbedVideoId = null
                     val dy = event.rawY - dragStartY
                     if (!isDragging && (kotlin.math.abs(dx) > dragThreshold || kotlin.math.abs(dy) > dragThreshold)) {
                         isDragging = true
+                        longPressHandler.removeCallbacks(longPressRunnable)
                     }
                     if (isDragging) {
                         v.x = viewStartX + dx
@@ -808,9 +827,14 @@ currentEmbedVideoId = null
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!isDragging) {
+                    longPressHandler.removeCallbacks(longPressRunnable)
+                    if (!isDragging && !isLongPressed) {
                         showSandboxAddDialog()
                     }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    longPressHandler.removeCallbacks(longPressRunnable)
                     true
                 }
                 else -> false
