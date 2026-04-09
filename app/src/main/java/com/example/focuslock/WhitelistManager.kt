@@ -147,6 +147,7 @@ object WhitelistManager {
                 }
             }
         }
+        if (ArchiveManager.isArchivedUrl(context, url)) return true
         return false
     }
 

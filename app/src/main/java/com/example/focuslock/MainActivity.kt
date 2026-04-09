@@ -8,8 +8,13 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.animation.ObjectAnimator
 import android.view.View
 import android.view.ViewGroup
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.GeolocationPermissions
@@ -34,6 +39,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.GestureDetectorCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.focuslock.databinding.ActivityMainBinding
@@ -51,6 +57,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
     private var activeFilterTag: String? = null
     private var isSearchMode = false
+    private var isArchiveMode = false
+    private var archiveDateViewMode = false
+    private var showArchivedInSearch = false
+    private val archiveFolderStack = mutableListOf<String?>(null)
+    private val currentArchiveFolderId: String? get() = archiveFolderStack.last()
     private var showHiddenItems = false
     private var currentEmbedVideoId: String? = null
     private var currentEmbedEntryUrl: String? = null
@@ -59,7 +70,6 @@ class MainActivity : AppCompatActivity() {
     private var pendingDescriptionText: String? = null
     private var invidiousRedirectEnabled = false
     private var invidiousInstance = "yewtu.be"
-    private var hideFinishedVideos = false
     private var showTags = false
     private var showVideoProgress = false
     private var showConsumedToday = false
@@ -107,7 +117,8 @@ class MainActivity : AppCompatActivity() {
         youtubeFocusMode = prefs.getBoolean("youtube_focus_mode", false)
         invidiousRedirectEnabled = prefs.getBoolean("invidious_redirect_enabled", false)
         invidiousInstance = prefs.getString("invidious_instance", "yewtu.be") ?: "yewtu.be"
-        hideFinishedVideos = prefs.getBoolean("hide_finished_videos", false)
+        showArchivedInSearch = prefs.getBoolean("archive_show_in_search", false)
+        archiveDateViewMode = ArchiveManager.isDateView(this)
         showTags = prefs.getBoolean("show_tags", false)
         showVideoProgress = prefs.getBoolean("show_video_progress", false)
         showConsumedToday = prefs.getBoolean("show_consumed_today", false)
@@ -222,11 +233,10 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putString("invidious_instance", invidiousInstance).apply()
         }
 
-        binding.switchHideFinished.isChecked = prefs.getBoolean("hide_finished_videos", false)
-        binding.switchHideFinished.setOnCheckedChangeListener { _, isChecked ->
-            hideFinishedVideos = isChecked
-            prefs.edit().putBoolean("hide_finished_videos", isChecked).apply()
-            if (binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
+        binding.switchShowArchivedInSearch.isChecked = showArchivedInSearch
+        binding.switchShowArchivedInSearch.setOnCheckedChangeListener { _, isChecked ->
+            showArchivedInSearch = isChecked
+            prefs.edit().putBoolean("archive_show_in_search", isChecked).apply()
         }
 
         binding.btnResetProgress.setOnClickListener {
@@ -519,6 +529,65 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        val archiveOpenGesture = GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (velocityY < -900 && !binding.homeList.canScrollVertically(1)) {
+                    if (!isArchiveMode && !isSearchMode) {
+                        showArchive()
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+        binding.homeList.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                archiveOpenGesture.onTouchEvent(e)
+                return false
+            }
+        })
+
+        val archiveCloseGesture = GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (velocityY > 900 && !binding.archiveList.canScrollVertically(-1)) {
+                    if (archiveFolderStack.size <= 1) {
+                        hideArchive()
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+        binding.archiveList.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                archiveCloseGesture.onTouchEvent(e)
+                return false
+            }
+        })
+
+        binding.btnArchiveBack.setOnClickListener {
+            if (archiveFolderStack.size > 1) {
+                archiveFolderStack.removeAt(archiveFolderStack.size - 1)
+                refreshArchiveList()
+                updateArchiveBreadcrumb()
+            } else {
+                hideArchive()
+            }
+        }
+
+        binding.btnArchiveDateView.setOnClickListener {
+            archiveDateViewMode = !archiveDateViewMode
+            ArchiveManager.setDateView(this, archiveDateViewMode)
+            binding.btnArchiveDateView.text = if (archiveDateViewMode) "By Folder" else "By Date"
+            refreshArchiveList()
+            updateArchiveBreadcrumb()
+            binding.fabArchiveNewFolder.visibility = if (archiveDateViewMode) View.GONE else View.VISIBLE
+        }
+
+        binding.fabArchiveNewFolder.setOnClickListener {
+            showCreateArchiveFolderDialog()
+        }
+
         showHome()
 
         binding.btnHome.setOnClickListener {
@@ -604,7 +673,9 @@ class MainActivity : AppCompatActivity() {
         binding.switchYoutubeEmbed.isChecked = youtubeFocusMode
         invidiousRedirectEnabled = prefs.getBoolean("invidious_redirect_enabled", false)
         invidiousInstance = prefs.getString("invidious_instance", "yewtu.be") ?: "yewtu.be"
-        hideFinishedVideos = prefs.getBoolean("hide_finished_videos", false)
+        showArchivedInSearch = prefs.getBoolean("archive_show_in_search", false)
+        binding.switchShowArchivedInSearch.isChecked = showArchivedInSearch
+        archiveDateViewMode = ArchiveManager.isDateView(this)
         binding.switchInvidiousRedirect.isChecked = invidiousRedirectEnabled
         binding.invidiousInstanceContainer.visibility = if (invidiousRedirectEnabled) View.VISIBLE else View.GONE
         if (binding.homeScreen.visibility == View.VISIBLE) {
@@ -662,6 +733,11 @@ currentEmbedVideoId = null
         descriptionEditMode = false
         descriptionDirty = false
         pendingDescriptionText = null
+        isArchiveMode = false
+        binding.archiveScreen.clearAnimation()
+        binding.archiveScreen.visibility = View.GONE
+        binding.archiveScreen.translationY = 0f
+        binding.fabArchiveNewFolder.visibility = View.GONE
         binding.webView.stopLoading()
         binding.webView.loadUrl("about:blank")
         binding.homeScreen.visibility = View.VISIBLE
@@ -685,6 +761,7 @@ currentEmbedVideoId = null
         binding.webView.visibility = View.VISIBLE
         binding.fab.visibility = View.GONE
         binding.fabNewFolder.visibility = View.GONE
+        binding.fabArchiveNewFolder.visibility = View.GONE
         binding.swipeRefreshLayout.isEnabled = pullToReloadEnabled
     }
 
@@ -814,15 +891,6 @@ currentEmbedVideoId = null
         }
 
         val allProgress = VideoProgressManager.getAllProgress(this)
-
-        if (hideFinishedVideos && !showHiddenItems) {
-            items.removeAll { item ->
-                if (item is HomeItem.EntryItem) {
-                    val vid = VideoProgressManager.extractVideoId(item.entry.url)
-                    vid != null && allProgress[vid]?.isFinished == true
-                } else false
-            }
-        }
 
         val folders = items.filterIsInstance<HomeItem.FolderItem>()
         val entries = items.filterIsInstance<HomeItem.EntryItem>()
@@ -1137,6 +1205,22 @@ currentEmbedVideoId = null
                     items.add(SearchItem.EntryResult(entry))
                 }
             }
+
+            if (showArchivedInSearch && trimmedQuery.isNotEmpty()) {
+                val archivedMatches = ArchiveManager.getArchivedEntries(this).filter {
+                    it.name.lowercase().contains(trimmedQuery) || it.url.lowercase().contains(trimmedQuery)
+                }.sortedBy { it.name.lowercase() }
+                if (archivedMatches.isNotEmpty()) {
+                    items.add(SearchItem.SectionHeader("Archived Sites"))
+                    for (entry in archivedMatches) {
+                        items.add(
+                            SearchItem.EntryResult(
+                                WhitelistEntry(url = entry.url, name = "\uD83D\uDCE6 ${entry.name}", tags = entry.tags)
+                            )
+                        )
+                    }
+                }
+            }
         }
 
         val adapter = SearchAdapter(
@@ -1217,6 +1301,155 @@ currentEmbedVideoId = null
 
         binding.breadcrumbScroll.post {
             binding.breadcrumbScroll.fullScroll(android.widget.HorizontalScrollView.FOCUS_RIGHT)
+        }
+    }
+
+    private fun showArchive() {
+        isArchiveMode = true
+        archiveFolderStack.clear()
+        archiveFolderStack.add(null)
+        binding.archiveScreen.visibility = View.VISIBLE
+        binding.archiveScreen.post {
+            binding.archiveScreen.translationY = binding.archiveScreen.height.toFloat()
+            binding.archiveScreen.animate()
+                .translationY(0f)
+                .setDuration(300)
+                .start()
+        }
+        binding.fab.hide()
+        binding.fabNewFolder.hide()
+        binding.btnArchiveDateView.text = if (archiveDateViewMode) "By Folder" else "By Date"
+        refreshArchiveList()
+        updateArchiveBreadcrumb()
+        binding.fabArchiveNewFolder.visibility = if (archiveDateViewMode) View.GONE else View.VISIBLE
+    }
+
+    private fun hideArchive() {
+        binding.archiveScreen.animate()
+            .translationY(binding.archiveScreen.height.toFloat())
+            .setDuration(250)
+            .withEndAction {
+                binding.archiveScreen.visibility = View.GONE
+                binding.archiveScreen.translationY = 0f
+                isArchiveMode = false
+            }
+            .start()
+        binding.fab.show()
+        binding.fabNewFolder.show()
+        binding.fabArchiveNewFolder.visibility = View.GONE
+    }
+
+    private fun refreshArchiveList() {
+        val items = mutableListOf<ArchiveItem>()
+        val anyLockInActive = ArchiveManager.isHideIfLockInActive(this) &&
+            WhitelistManager.getFolders(this).any { WhitelistManager.isLockInActive(this, it.id) }
+
+        if (archiveDateViewMode) {
+            val byMonth = ArchiveManager.getArchivedEntriesByMonth(this)
+            for ((monthLabel, entries) in byMonth) {
+                items.add(ArchiveItem.DateHeader(monthLabel))
+                for (entry in entries) {
+                    items.add(ArchiveItem.EntryItem(entry, isBlocked = anyLockInActive))
+                }
+            }
+        } else {
+            val folders = ArchiveManager.getArchiveSubfolders(this, currentArchiveFolderId)
+            for (folder in folders.sortedBy { it.sortOrder }) {
+                items.add(ArchiveItem.FolderItem(folder))
+            }
+            val entries = ArchiveManager.getEntriesInArchiveFolder(this, currentArchiveFolderId)
+            for (entry in entries.sortedBy { it.sortOrder }) {
+                items.add(ArchiveItem.EntryItem(entry, isBlocked = anyLockInActive))
+            }
+        }
+
+        binding.archiveList.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
+        binding.archiveEmptyMessage.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+
+        if (binding.archiveList.layoutManager == null) {
+            binding.archiveList.layoutManager = LinearLayoutManager(this)
+        }
+        binding.archiveList.adapter = ArchiveAdapter(
+            items,
+            onFolderClick = { folder ->
+                archiveFolderStack.add(folder.id)
+                refreshArchiveList()
+                updateArchiveBreadcrumb()
+            },
+            onFolderLongPress = { folder -> showArchiveFolderOptionsDialog(folder) },
+            onEntryClick = { entry ->
+                if (!anyLockInActive) {
+                    val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
+                        entry.url
+                    } else {
+                        "https://${entry.url}"
+                    }
+                    hideArchive()
+                    showWebView()
+                    binding.webView.loadUrl(url)
+                }
+            },
+            onEntryLongPress = { entry -> showArchiveEntryOptionsDialog(entry) }
+        )
+    }
+
+    private fun updateArchiveBreadcrumb() {
+        val container = binding.archiveBreadcrumbContainer
+        container.removeAllViews()
+
+        if (archiveDateViewMode || archiveFolderStack.size <= 1) {
+            binding.archiveBreadcrumbScroll.visibility = View.GONE
+            return
+        }
+
+        binding.archiveBreadcrumbScroll.visibility = View.VISIBLE
+        val allFolders = ArchiveManager.getArchiveFolders(this)
+
+        val rootText = TextView(this).apply {
+            text = "Archive"
+            textSize = 14f
+            setTextColor(getColor(com.google.android.material.R.color.design_default_color_primary))
+            setOnClickListener {
+                archiveFolderStack.clear()
+                archiveFolderStack.add(null)
+                refreshArchiveList()
+                updateArchiveBreadcrumb()
+            }
+        }
+        container.addView(rootText)
+
+        for (i in 1 until archiveFolderStack.size) {
+            val sep = TextView(this).apply {
+                text = " \u203A "
+                textSize = 14f
+            }
+            container.addView(sep)
+
+            val folderId = archiveFolderStack[i]!!
+            val folder = allFolders.find { it.id == folderId }
+            val isLast = i == archiveFolderStack.size - 1
+
+            val label = TextView(this).apply {
+                text = folder?.name ?: "\u2026"
+                textSize = 14f
+                if (isLast) {
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                } else {
+                    setTextColor(getColor(com.google.android.material.R.color.design_default_color_primary))
+                    setOnClickListener {
+                        while (archiveFolderStack.size > i + 1) {
+                            archiveFolderStack.removeAt(archiveFolderStack.size - 1)
+                        }
+                        refreshArchiveList()
+                        updateArchiveBreadcrumb()
+                    }
+                }
+            }
+            container.addView(label)
+        }
+
+        binding.archiveBreadcrumbScroll.post {
+            binding.archiveBreadcrumbScroll.fullScroll(android.widget.HorizontalScrollView.FOCUS_RIGHT)
         }
     }
 
@@ -1823,13 +2056,33 @@ currentEmbedVideoId = null
             layout.addView(addToCuratedBtn)
         }
 
+        val archiveBtn = MaterialButton(this).apply {
+            text = "Archive Site"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 16
+            }
+        }
+
         val scrollView = android.widget.ScrollView(this).apply {
             addView(layout)
         }
 
-        AlertDialog.Builder(this)
+        val dialogView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 16)
+            addView(archiveBtn)
+            addView(scrollView, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Edit Site")
-            .setView(scrollView)
+            .setView(dialogView)
             .setPositiveButton("Save") { _, _ ->
                 val newName = nameInput.text.toString().trim()
                 if (newName.isNotEmpty()) {
@@ -1842,6 +2095,20 @@ currentEmbedVideoId = null
             }
             .setNegativeButton("Cancel", null)
             .show()
+
+        archiveBtn.setOnClickListener {
+            dialog.dismiss()
+            AlertDialog.Builder(this)
+                .setTitle("Archive Site")
+                .setMessage("Move \"${entry.name}\" to the archive? You can restore it from the archive later.")
+                .setPositiveButton("Archive") { _, _ ->
+                    ArchiveManager.archiveEntry(this, entry)
+                    refreshHomeList()
+                    android.widget.Toast.makeText(this, "${entry.name} archived", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
     }
 
     private fun attemptAddToCurated(entry: WhitelistEntry, curatedFolder: Folder) {
@@ -1902,6 +2169,361 @@ currentEmbedVideoId = null
                 }
                 show()
             }
+    }
+
+    private data class WhitelistFolderChoice(val label: String, val id: String?)
+
+    private fun buildWhitelistFolderChoices(): List<WhitelistFolderChoice> {
+        val folders = WhitelistManager.getFolders(this)
+        val choices = mutableListOf(WhitelistFolderChoice("Home", null))
+        fun addChildren(parentId: String?, depth: Int) {
+            val children = folders.filter { it.parentId == parentId }.sortedBy { it.sortOrder }
+            for (folder in children) {
+                choices.add(WhitelistFolderChoice("${"  ".repeat(depth)}${folder.name}", folder.id))
+                addChildren(folder.id, depth + 1)
+            }
+        }
+        addChildren(null, 0)
+        return choices
+    }
+
+    private data class ArchiveFolderChoice(val label: String, val id: String?)
+
+    private fun buildArchiveFolderChoices(): List<ArchiveFolderChoice> {
+        val folders = ArchiveManager.getArchiveFolders(this)
+        val choices = mutableListOf(ArchiveFolderChoice("Archive Root", null))
+        fun addChildren(parentId: String?, depth: Int) {
+            val children = folders.filter { it.parentId == parentId }.sortedBy { it.sortOrder }
+            for (folder in children) {
+                choices.add(ArchiveFolderChoice("${"  ".repeat(depth)}${folder.name}", folder.id))
+                addChildren(folder.id, depth + 1)
+            }
+        }
+        addChildren(null, 0)
+        return choices
+    }
+
+    private fun showArchiveEntryOptionsDialog(entry: ArchivedEntry) {
+        val options = arrayOf("Restore Site", "Move to Folder", "Edit")
+        AlertDialog.Builder(this)
+            .setTitle(entry.name)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showArchiveRestoreDialog(entry)
+                    1 -> showArchiveMoveToFolderDialog(entry)
+                    2 -> showArchiveEditDialog(entry)
+                }
+            }
+            .show()
+    }
+
+    private fun showArchiveRestoreDialog(entry: ArchivedEntry) {
+        showPasswordDialogThen {
+            val choices = buildWhitelistFolderChoices()
+            AlertDialog.Builder(this)
+                .setTitle("Restore To")
+                .setItems(choices.map { it.label }.toTypedArray()) { _, which ->
+                    ArchiveManager.restoreEntry(this, entry, choices[which].id)
+                    refreshArchiveList()
+                    refreshHomeList()
+                    android.widget.Toast.makeText(this, "Site restored", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                .show()
+        }
+    }
+
+    private fun showArchiveMoveToFolderDialog(entry: ArchivedEntry) {
+        val choices = buildArchiveFolderChoices()
+        AlertDialog.Builder(this)
+            .setTitle("Move to Folder")
+            .setItems(choices.map { it.label }.toTypedArray()) { _, which ->
+                ArchiveManager.moveEntryToArchiveFolder(this, entry.url, choices[which].id)
+                refreshArchiveList()
+            }
+            .show()
+    }
+
+    private fun showArchiveEditDialog(entry: ArchivedEntry) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 16)
+        }
+
+        val nameLabel = TextView(this).apply {
+            text = "Display Name"
+            textSize = 12f
+            setTextColor(android.graphics.Color.GRAY)
+        }
+        val nameInput = EditText(this).apply {
+            setText(entry.name)
+            hint = "Display name"
+        }
+        layout.addView(nameLabel)
+        layout.addView(nameInput)
+
+        val tagsLabel = TextView(this).apply {
+            text = "Tags"
+            textSize = 12f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, 24, 0, 8)
+        }
+        layout.addView(tagsLabel)
+
+        val chipScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val chipContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        chipScroll.addView(chipContainer)
+        layout.addView(chipScroll)
+
+        val currentTags = entry.tags.toMutableList()
+        val dp = resources.displayMetrics.density
+
+        fun rebuildChips() {
+            chipContainer.removeAllViews()
+            for (tag in currentTags) {
+                val chip = TextView(this).apply {
+                    text = "$tag  \u2715"
+                    textSize = 13f
+                    setPadding((12 * dp).toInt(), (6 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
+                    background = GradientDrawable().apply {
+                        cornerRadius = 16 * dp
+                        setColor(0x1F000000)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        marginEnd = (8 * dp).toInt()
+                    }
+                    setOnClickListener {
+                        currentTags.remove(tag)
+                        rebuildChips()
+                    }
+                }
+                chipContainer.addView(chip)
+            }
+        }
+        rebuildChips()
+
+        val addTagRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 0)
+        }
+        val tagInput = EditText(this).apply {
+            hint = "Add tag..."
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            imeOptions = EditorInfo.IME_ACTION_DONE
+        }
+        val addBtn = MaterialButton(this).apply {
+            text = "Add"
+        }
+
+        fun addTag() {
+            val tag = tagInput.text.toString().trim().lowercase()
+            if (tag.isNotEmpty() && tag !in currentTags) {
+                currentTags.add(tag)
+                tagInput.text.clear()
+                rebuildChips()
+                rebuildSuggestions("")
+            }
+        }
+
+        addBtn.setOnClickListener { addTag() }
+        tagInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                addTag()
+                true
+            } else {
+                false
+            }
+        }
+
+        addTagRow.addView(tagInput)
+        addTagRow.addView(addBtn)
+        layout.addView(addTagRow)
+
+        val allTags = (WhitelistManager.getAllTags(this) + ArchiveManager.getArchivedEntries(this).flatMap { it.tags }).toSet()
+
+        val suggestLabel = TextView(this).apply {
+            text = "Existing tags"
+            textSize = 11f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, 16, 0, 4)
+            visibility = View.GONE
+        }
+        layout.addView(suggestLabel)
+
+        val suggestScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            visibility = View.GONE
+        }
+        val suggestContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        suggestScroll.addView(suggestContainer)
+        layout.addView(suggestScroll)
+
+        fun rebuildSuggestions(query: String) {
+            suggestContainer.removeAllViews()
+            if (query.isEmpty()) {
+                suggestLabel.visibility = View.GONE
+                suggestScroll.visibility = View.GONE
+                return
+            }
+            val filtered = allTags.filter { it !in currentTags && it.contains(query, ignoreCase = true) }.sorted()
+            if (filtered.isEmpty()) {
+                suggestLabel.visibility = View.GONE
+                suggestScroll.visibility = View.GONE
+                return
+            }
+            for (tag in filtered) {
+                val chip = TextView(this).apply {
+                    text = "+ $tag"
+                    textSize = 12f
+                    setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (4 * dp).toInt())
+                    background = GradientDrawable().apply {
+                        cornerRadius = 16 * dp
+                        setColor(0x0F000000)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        marginEnd = (8 * dp).toInt()
+                    }
+                    setOnClickListener {
+                        if (tag !in currentTags) {
+                            currentTags.add(tag)
+                            rebuildChips()
+                            tagInput.text.clear()
+                            rebuildSuggestions("")
+                        }
+                    }
+                }
+                suggestContainer.addView(chip)
+            }
+            suggestLabel.visibility = View.VISIBLE
+            suggestScroll.visibility = View.VISIBLE
+        }
+
+        tagInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                rebuildSuggestions(s?.toString()?.trim()?.lowercase() ?: "")
+            }
+        })
+
+        var descInput: EditText? = null
+        if (VideoProgressManager.extractVideoId(entry.url) != null) {
+            val descLabel = TextView(this).apply {
+                text = "Notes / Description"
+                textSize = 12f
+                setTextColor(android.graphics.Color.GRAY)
+                setPadding(0, 24, 0, 8)
+            }
+            layout.addView(descLabel)
+
+            descInput = EditText(this).apply {
+                hint = "Add a note about this video..."
+                setText(entry.description ?: "")
+                minLines = 2
+                maxLines = 5
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            }
+            layout.addView(descInput)
+        }
+
+        val scrollView = android.widget.ScrollView(this).apply {
+            addView(layout)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Edit Archived Site")
+            .setView(scrollView)
+            .setPositiveButton("Save") { _, _ ->
+                val newName = nameInput.text.toString().trim().ifEmpty { entry.url }
+                ArchiveManager.updateArchivedEntry(
+                    this,
+                    entry.url,
+                    newName,
+                    currentTags,
+                    descInput?.text?.toString()?.trim()
+                )
+                refreshArchiveList()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showArchiveFolderOptionsDialog(folder: ArchiveFolder) {
+        val options = arrayOf("Rename", "Delete")
+        AlertDialog.Builder(this)
+            .setTitle(folder.name)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        val input = EditText(this).apply { setText(folder.name) }
+                        AlertDialog.Builder(this)
+                            .setTitle("Rename Folder")
+                            .setView(LinearLayout(this).apply {
+                                setPadding(48, 32, 48, 0)
+                                addView(input)
+                            })
+                            .setPositiveButton("Save") { _, _ ->
+                                val newName = input.text.toString().trim()
+                                if (newName.isNotEmpty()) {
+                                    ArchiveManager.renameArchiveFolder(this, folder.id, newName)
+                                    refreshArchiveList()
+                                    updateArchiveBreadcrumb()
+                                }
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                    1 -> {
+                        AlertDialog.Builder(this)
+                            .setTitle("Delete Folder")
+                            .setMessage("Delete \"${folder.name}\"? Sites inside will move to the parent folder.")
+                            .setPositiveButton("Delete") { _, _ ->
+                                ArchiveManager.deleteArchiveFolder(this, folder.id)
+                                val remaining = ArchiveManager.getArchiveFolders(this).map { it.id }.toSet()
+                                archiveFolderStack.removeAll { it != null && it !in remaining }
+                                if (archiveFolderStack.isEmpty()) archiveFolderStack.add(null)
+                                refreshArchiveList()
+                                updateArchiveBreadcrumb()
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun showCreateArchiveFolderDialog() {
+        val input = EditText(this).apply { hint = "Folder name" }
+        AlertDialog.Builder(this)
+            .setTitle("New Archive Folder")
+            .setView(LinearLayout(this).apply {
+                setPadding(48, 32, 48, 0)
+                addView(input)
+            })
+            .setPositiveButton("Create") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    ArchiveManager.createArchiveFolder(this, name, currentArchiveFolderId)
+                    refreshArchiveList()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showDeleteFolderDialog(folder: Folder) {
@@ -2228,6 +2850,16 @@ currentEmbedVideoId = null
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        if (binding.archiveScreen.visibility == View.VISIBLE) {
+            if (archiveFolderStack.size > 1) {
+                archiveFolderStack.removeAt(archiveFolderStack.size - 1)
+                refreshArchiveList()
+                updateArchiveBreadcrumb()
+            } else {
+                hideArchive()
+            }
+            return
+        }
         if (binding.drawerLayout.isDrawerOpen(android.view.Gravity.START)) {
             binding.drawerLayout.closeDrawers()
             return
@@ -2265,6 +2897,161 @@ currentEmbedVideoId = null
             super.onBackPressed()
         }
     }
+
+    private sealed class ArchiveItem {
+        data class FolderItem(val folder: ArchiveFolder) : ArchiveItem()
+        data class EntryItem(val entry: ArchivedEntry, val isBlocked: Boolean = false) : ArchiveItem()
+        data class DateHeader(val label: String) : ArchiveItem()
+    }
+
+    private class ArchiveAdapter(
+        private val items: List<ArchiveItem>,
+        private val onFolderClick: (ArchiveFolder) -> Unit,
+        private val onFolderLongPress: (ArchiveFolder) -> Unit,
+        private val onEntryClick: (ArchivedEntry) -> Unit,
+        private val onEntryLongPress: (ArchivedEntry) -> Unit
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+        companion object {
+            private const val TYPE_FOLDER = 0
+            private const val TYPE_ENTRY = 1
+            private const val TYPE_DATE_HEADER = 2
+        }
+
+        class FolderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val iconView: ImageView = view.findViewById(android.R.id.icon)
+            val textView: TextView = view.findViewById(android.R.id.text1)
+            val chevronView: TextView = view.findViewById(android.R.id.text2)
+        }
+
+        class EntryViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val nameView: TextView = view.findViewById(android.R.id.text1)
+        }
+
+        class DateHeaderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val textView: TextView = view as TextView
+        }
+
+        override fun getItemViewType(position: Int): Int = when (items[position]) {
+            is ArchiveItem.FolderItem -> TYPE_FOLDER
+            is ArchiveItem.EntryItem -> TYPE_ENTRY
+            is ArchiveItem.DateHeader -> TYPE_DATE_HEADER
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val ctx = parent.context
+            val dp = ctx.resources.displayMetrics.density
+            return when (viewType) {
+                TYPE_FOLDER -> {
+                    val row = LinearLayout(ctx).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setPadding((16 * dp).toInt(), (14 * dp).toInt(), (16 * dp).toInt(), (14 * dp).toInt())
+                        val outValue = android.util.TypedValue()
+                        ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+                        setBackgroundResource(outValue.resourceId)
+                    }
+                    val icon = ImageView(ctx).apply {
+                        id = android.R.id.icon
+                        setImageResource(android.R.drawable.ic_menu_agenda)
+                        layoutParams = LinearLayout.LayoutParams((24 * dp).toInt(), (24 * dp).toInt()).apply {
+                            marginEnd = (12 * dp).toInt()
+                        }
+                    }
+                    val text = TextView(ctx).apply {
+                        id = android.R.id.text1
+                        textSize = 16f
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+                    val chevron = TextView(ctx).apply {
+                        id = android.R.id.text2
+                        text = "\u203A"
+                        textSize = 20f
+                        setTextColor(android.graphics.Color.GRAY)
+                    }
+                    row.addView(icon)
+                    row.addView(text)
+                    row.addView(chevron)
+                    FolderViewHolder(row)
+                }
+                TYPE_ENTRY -> {
+                    val row = LinearLayout(ctx).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        setPadding((16 * dp).toInt(), (14 * dp).toInt(), (16 * dp).toInt(), (14 * dp).toInt())
+                        val outValue = android.util.TypedValue()
+                        ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+                        setBackgroundResource(outValue.resourceId)
+                    }
+                    val text = TextView(ctx).apply {
+                        id = android.R.id.text1
+                        textSize = 16f
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+                    row.addView(text)
+                    EntryViewHolder(row)
+                }
+                else -> {
+                    val text = TextView(ctx).apply {
+                        textSize = 12f
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                        setTextColor(android.graphics.Color.GRAY)
+                        setPadding((16 * dp).toInt(), (16 * dp).toInt(), (16 * dp).toInt(), (8 * dp).toInt())
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                    }
+                    DateHeaderViewHolder(text)
+                }
+            }
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (val item = items[position]) {
+                is ArchiveItem.FolderItem -> {
+                    val vh = holder as FolderViewHolder
+                    vh.textView.text = item.folder.name
+                    vh.itemView.alpha = 1f
+                    vh.itemView.setOnClickListener { onFolderClick(item.folder) }
+                    vh.itemView.setOnLongClickListener {
+                        onFolderLongPress(item.folder)
+                        true
+                    }
+                }
+                is ArchiveItem.EntryItem -> {
+                    val vh = holder as EntryViewHolder
+                    vh.nameView.text = item.entry.name
+                    vh.itemView.alpha = if (item.isBlocked) 0.4f else 1f
+                    if (item.isBlocked) {
+                        vh.itemView.setOnClickListener(null)
+                        vh.itemView.setOnLongClickListener(null)
+                    } else {
+                        vh.itemView.setOnClickListener { onEntryClick(item.entry) }
+                        vh.itemView.setOnLongClickListener {
+                            onEntryLongPress(item.entry)
+                            true
+                        }
+                    }
+                }
+                is ArchiveItem.DateHeader -> {
+                    (holder as DateHeaderViewHolder).textView.text = item.label
+                }
+            }
+        }
+
+        override fun getItemCount(): Int = items.size
+    }
+
     private sealed class HomeItem {
         data class FolderItem(val folder: Folder) : HomeItem()
         data class EntryItem(val entry: WhitelistEntry, val isLockedOut: Boolean = false, val isIndentedLockIn: Boolean = false) : HomeItem()
