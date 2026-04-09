@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private var showTags = false
     private var showVideoProgress = false
     private var showConsumedToday = false
+    private var pullToReloadEnabled = true
     private var webViewPageScrollY = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -110,6 +111,7 @@ class MainActivity : AppCompatActivity() {
         showTags = prefs.getBoolean("show_tags", false)
         showVideoProgress = prefs.getBoolean("show_video_progress", false)
         showConsumedToday = prefs.getBoolean("show_consumed_today", false)
+        pullToReloadEnabled = prefs.getBoolean("pull_to_reload_enabled", true)
         applyDesktopMode()
 
         binding.webView.addJavascriptInterface(object {
@@ -259,6 +261,14 @@ class MainActivity : AppCompatActivity() {
             showConsumedToday = isChecked
             prefs.edit().putBoolean("show_consumed_today", isChecked).apply()
             if (binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
+        }
+
+        binding.switchPullToReload.isChecked = pullToReloadEnabled
+        binding.swipeRefreshLayout.isEnabled = pullToReloadEnabled
+        binding.switchPullToReload.setOnCheckedChangeListener { _, isChecked ->
+            pullToReloadEnabled = isChecked
+            prefs.edit().putBoolean("pull_to_reload_enabled", isChecked).apply()
+            binding.swipeRefreshLayout.isEnabled = isChecked
         }
 
         binding.webView.webViewClient = object : WebViewClient() {
@@ -675,7 +685,7 @@ currentEmbedVideoId = null
         binding.webView.visibility = View.VISIBLE
         binding.fab.visibility = View.GONE
         binding.fabNewFolder.visibility = View.GONE
-        binding.swipeRefreshLayout.isEnabled = true
+        binding.swipeRefreshLayout.isEnabled = pullToReloadEnabled
     }
 
     private fun getAllEntriesInFolderRecursive(folderId: String?): List<WhitelistEntry> {
