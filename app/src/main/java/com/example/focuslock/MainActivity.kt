@@ -2330,7 +2330,6 @@ currentEmbedVideoId = null
                 currentTags.add(tag)
                 tagInput.text.clear()
                 rebuildChips()
-                rebuildSuggestions("")
             }
         }
 
@@ -2962,7 +2961,7 @@ currentEmbedVideoId = null
                             marginEnd = (12 * dp).toInt()
                         }
                     }
-                    val text = TextView(ctx).apply {
+                    val folderNameText = TextView(ctx).apply {
                         id = android.R.id.text1
                         textSize = 16f
                         setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -2975,7 +2974,7 @@ currentEmbedVideoId = null
                         setTextColor(android.graphics.Color.GRAY)
                     }
                     row.addView(icon)
-                    row.addView(text)
+                    row.addView(folderNameText)
                     row.addView(chevron)
                     FolderViewHolder(row)
                 }
