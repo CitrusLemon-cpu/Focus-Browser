@@ -62,10 +62,17 @@
                 android:layout_height="0dp"
                 android:layout_weight="1">
 
-                <WebView
-                    android:id="@+id/webView"
+                <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                    android:id="@+id/swipeRefreshLayout"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
+                    android:layout_height="match_parent">
+
+                    <WebView
+                        android:id="@+id/webView"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+
+                </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
                 <!-- Home screen overlay -->
                 <LinearLayout
@@ -122,6 +129,99 @@
 
                 </LinearLayout>
 
+                <LinearLayout
+                    android:id="@+id/archiveScreen"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:background="?attr/colorSurface"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:elevation="4dp"
+                        android:background="?attr/colorSurface"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="8dp">
+
+                        <ImageButton
+                            android:id="@+id/btnArchiveBack"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:src="@android:drawable/ic_menu_close_clear_cancel"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="Close Archive"
+                            android:scaleType="centerInside" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Archive"
+                            android:textSize="20sp"
+                            android:textStyle="bold"
+                            android:paddingStart="4dp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnArchiveDateView"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="By Date"
+                            style="@style/Widget.MaterialComponents.Button.TextButton" />
+                    </LinearLayout>
+
+                    <HorizontalScrollView
+                        android:id="@+id/archiveBreadcrumbScroll"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:scrollbars="none"
+                        android:visibility="gone"
+                        android:background="?attr/colorSurfaceVariant">
+
+                        <LinearLayout
+                            android:id="@+id/archiveBreadcrumbContainer"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:paddingStart="16dp"
+                            android:paddingEnd="16dp"
+                            android:paddingTop="10dp"
+                            android:paddingBottom="10dp"
+                            android:gravity="center_vertical" />
+                    </HorizontalScrollView>
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/archiveList"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:id="@+id/archiveEmptyMessage"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="No archived sites yet.\nLong-press a site and choose 'Archive Site'."
+                        android:textSize="16sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/fabArchiveNewFolder"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|start"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginBottom="16dp"
+                    android:src="@android:drawable/ic_input_add"
+                    android:contentDescription="New Archive Folder"
+                    android:visibility="gone" />
+
                 <com.google.android.material.floatingactionbutton.FloatingActionButton
                     android:id="@+id/fabNewFolder"
                     android:layout_width="wrap_content"
@@ -141,6 +241,17 @@
                     android:layout_marginBottom="16dp"
                     android:src="@android:drawable/ic_menu_manage"
                     android:contentDescription="Settings" />
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/fabSandboxAdd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|start"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginBottom="80dp"
+                    android:src="@android:drawable/btn_star_big_on"
+                    android:contentDescription="Add current site to whitelist"
+                    android:visibility="gone" />
 
             </FrameLayout>
 
@@ -327,7 +438,7 @@
                 </RadioGroup>
             </LinearLayout>
 
-            <!-- Hide Finished Videos (moved from SettingsActivity) -->
+            <!-- Show Archived Sites in Search -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -345,32 +456,22 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Hide Finished Videos"
+                        android:text="Show Archived Sites in Search"
                         android:textSize="16sp" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Hide YouTube videos watched to 90% or more"
+                        android:text="Include archived sites in search results"
                         android:textSize="12sp"
                         android:textColor="?attr/colorOnSurfaceVariant" />
                 </LinearLayout>
 
                 <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/switchHideFinished"
+                    android:id="@+id/switchShowArchivedInSearch"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content" />
             </LinearLayout>
-
-            <!-- Reset Video Progress -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnResetProgress"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="8dp"
-                android:text="Reset Video Progress"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
             <!-- Show Tags -->
             <LinearLayout
@@ -476,6 +577,51 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content" />
             </LinearLayout>
+
+            <!-- Pull to Reload toggle -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Pull to Reload"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Pull down from the top of a page to reload it"
+                        android:textSize="12sp"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchPullToReload"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <!-- Reset Video Progress -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnResetProgress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp"
+                android:text="Reset Video Progress"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
         </LinearLayout>
 

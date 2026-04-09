@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import androidx.viewbinding.ViewBinding;
 import androidx.viewbinding.ViewBindings;
 import com.example.focuslock.R;
@@ -32,10 +33,31 @@ public final class ActivityMainBinding implements ViewBinding {
   private final DrawerLayout rootView;
 
   @NonNull
+  public final LinearLayout archiveBreadcrumbContainer;
+
+  @NonNull
+  public final HorizontalScrollView archiveBreadcrumbScroll;
+
+  @NonNull
+  public final TextView archiveEmptyMessage;
+
+  @NonNull
+  public final RecyclerView archiveList;
+
+  @NonNull
+  public final LinearLayout archiveScreen;
+
+  @NonNull
   public final LinearLayout breadcrumbContainer;
 
   @NonNull
   public final HorizontalScrollView breadcrumbScroll;
+
+  @NonNull
+  public final ImageButton btnArchiveBack;
+
+  @NonNull
+  public final MaterialButton btnArchiveDateView;
 
   @NonNull
   public final ImageButton btnDesktopMode;
@@ -59,7 +81,13 @@ public final class ActivityMainBinding implements ViewBinding {
   public final FloatingActionButton fab;
 
   @NonNull
+  public final FloatingActionButton fabArchiveNewFolder;
+
+  @NonNull
   public final FloatingActionButton fabNewFolder;
+
+  @NonNull
+  public final FloatingActionButton fabSandboxAdd;
 
   @NonNull
   public final FrameLayout fullscreenContainer;
@@ -86,10 +114,16 @@ public final class ActivityMainBinding implements ViewBinding {
   public final RecyclerView searchResultsList;
 
   @NonNull
-  public final SwitchMaterial switchHideFinished;
+  public final SwipeRefreshLayout swipeRefreshLayout;
 
   @NonNull
   public final SwitchMaterial switchInvidiousRedirect;
+
+  @NonNull
+  public final SwitchMaterial switchPullToReload;
+
+  @NonNull
+  public final SwitchMaterial switchShowArchivedInSearch;
 
   @NonNull
   public final SwitchMaterial switchShowConsumedToday;
@@ -113,23 +147,37 @@ public final class ActivityMainBinding implements ViewBinding {
   public final WebView webView;
 
   private ActivityMainBinding(@NonNull DrawerLayout rootView,
+      @NonNull LinearLayout archiveBreadcrumbContainer,
+      @NonNull HorizontalScrollView archiveBreadcrumbScroll, @NonNull TextView archiveEmptyMessage,
+      @NonNull RecyclerView archiveList, @NonNull LinearLayout archiveScreen,
       @NonNull LinearLayout breadcrumbContainer, @NonNull HorizontalScrollView breadcrumbScroll,
+      @NonNull ImageButton btnArchiveBack, @NonNull MaterialButton btnArchiveDateView,
       @NonNull ImageButton btnDesktopMode, @NonNull ImageButton btnHome,
       @NonNull MaterialButton btnResetProgress, @NonNull LinearLayout drawerContent,
       @NonNull DrawerLayout drawerLayout, @NonNull TextView emptyMessage,
-      @NonNull FloatingActionButton fab, @NonNull FloatingActionButton fabNewFolder,
+      @NonNull FloatingActionButton fab, @NonNull FloatingActionButton fabArchiveNewFolder,
+      @NonNull FloatingActionButton fabNewFolder, @NonNull FloatingActionButton fabSandboxAdd,
       @NonNull FrameLayout fullscreenContainer, @NonNull RecyclerView homeList,
       @NonNull LinearLayout homeScreen, @NonNull LinearLayout invidiousInstanceContainer,
       @NonNull RadioGroup invidiousInstanceGroup, @NonNull RadioButton radioNadeko,
       @NonNull RadioButton radioYewtu, @NonNull RecyclerView searchResultsList,
-      @NonNull SwitchMaterial switchHideFinished, @NonNull SwitchMaterial switchInvidiousRedirect,
+      @NonNull SwipeRefreshLayout swipeRefreshLayout,
+      @NonNull SwitchMaterial switchInvidiousRedirect, @NonNull SwitchMaterial switchPullToReload,
+      @NonNull SwitchMaterial switchShowArchivedInSearch,
       @NonNull SwitchMaterial switchShowConsumedToday, @NonNull SwitchMaterial switchShowHidden,
       @NonNull SwitchMaterial switchShowTags, @NonNull SwitchMaterial switchShowVideoProgress,
       @NonNull SwitchMaterial switchYoutubeEmbed, @NonNull EditText urlBar,
       @NonNull WebView webView) {
     this.rootView = rootView;
+    this.archiveBreadcrumbContainer = archiveBreadcrumbContainer;
+    this.archiveBreadcrumbScroll = archiveBreadcrumbScroll;
+    this.archiveEmptyMessage = archiveEmptyMessage;
+    this.archiveList = archiveList;
+    this.archiveScreen = archiveScreen;
     this.breadcrumbContainer = breadcrumbContainer;
     this.breadcrumbScroll = breadcrumbScroll;
+    this.btnArchiveBack = btnArchiveBack;
+    this.btnArchiveDateView = btnArchiveDateView;
     this.btnDesktopMode = btnDesktopMode;
     this.btnHome = btnHome;
     this.btnResetProgress = btnResetProgress;
@@ -137,7 +185,9 @@ public final class ActivityMainBinding implements ViewBinding {
     this.drawerLayout = drawerLayout;
     this.emptyMessage = emptyMessage;
     this.fab = fab;
+    this.fabArchiveNewFolder = fabArchiveNewFolder;
     this.fabNewFolder = fabNewFolder;
+    this.fabSandboxAdd = fabSandboxAdd;
     this.fullscreenContainer = fullscreenContainer;
     this.homeList = homeList;
     this.homeScreen = homeScreen;
@@ -146,8 +196,10 @@ public final class ActivityMainBinding implements ViewBinding {
     this.radioNadeko = radioNadeko;
     this.radioYewtu = radioYewtu;
     this.searchResultsList = searchResultsList;
-    this.switchHideFinished = switchHideFinished;
+    this.swipeRefreshLayout = swipeRefreshLayout;
     this.switchInvidiousRedirect = switchInvidiousRedirect;
+    this.switchPullToReload = switchPullToReload;
+    this.switchShowArchivedInSearch = switchShowArchivedInSearch;
     this.switchShowConsumedToday = switchShowConsumedToday;
     this.switchShowHidden = switchShowHidden;
     this.switchShowTags = switchShowTags;
@@ -184,6 +236,36 @@ public final class ActivityMainBinding implements ViewBinding {
     // This is done to optimize the compiled bytecode for size and performance.
     int id;
     missingId: {
+      id = R.id.archiveBreadcrumbContainer;
+      LinearLayout archiveBreadcrumbContainer = ViewBindings.findChildViewById(rootView, id);
+      if (archiveBreadcrumbContainer == null) {
+        break missingId;
+      }
+
+      id = R.id.archiveBreadcrumbScroll;
+      HorizontalScrollView archiveBreadcrumbScroll = ViewBindings.findChildViewById(rootView, id);
+      if (archiveBreadcrumbScroll == null) {
+        break missingId;
+      }
+
+      id = R.id.archiveEmptyMessage;
+      TextView archiveEmptyMessage = ViewBindings.findChildViewById(rootView, id);
+      if (archiveEmptyMessage == null) {
+        break missingId;
+      }
+
+      id = R.id.archiveList;
+      RecyclerView archiveList = ViewBindings.findChildViewById(rootView, id);
+      if (archiveList == null) {
+        break missingId;
+      }
+
+      id = R.id.archiveScreen;
+      LinearLayout archiveScreen = ViewBindings.findChildViewById(rootView, id);
+      if (archiveScreen == null) {
+        break missingId;
+      }
+
       id = R.id.breadcrumbContainer;
       LinearLayout breadcrumbContainer = ViewBindings.findChildViewById(rootView, id);
       if (breadcrumbContainer == null) {
@@ -193,6 +275,18 @@ public final class ActivityMainBinding implements ViewBinding {
       id = R.id.breadcrumbScroll;
       HorizontalScrollView breadcrumbScroll = ViewBindings.findChildViewById(rootView, id);
       if (breadcrumbScroll == null) {
+        break missingId;
+      }
+
+      id = R.id.btnArchiveBack;
+      ImageButton btnArchiveBack = ViewBindings.findChildViewById(rootView, id);
+      if (btnArchiveBack == null) {
+        break missingId;
+      }
+
+      id = R.id.btnArchiveDateView;
+      MaterialButton btnArchiveDateView = ViewBindings.findChildViewById(rootView, id);
+      if (btnArchiveDateView == null) {
         break missingId;
       }
 
@@ -234,9 +328,21 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.fabArchiveNewFolder;
+      FloatingActionButton fabArchiveNewFolder = ViewBindings.findChildViewById(rootView, id);
+      if (fabArchiveNewFolder == null) {
+        break missingId;
+      }
+
       id = R.id.fabNewFolder;
       FloatingActionButton fabNewFolder = ViewBindings.findChildViewById(rootView, id);
       if (fabNewFolder == null) {
+        break missingId;
+      }
+
+      id = R.id.fabSandboxAdd;
+      FloatingActionButton fabSandboxAdd = ViewBindings.findChildViewById(rootView, id);
+      if (fabSandboxAdd == null) {
         break missingId;
       }
 
@@ -288,15 +394,27 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      id = R.id.switchHideFinished;
-      SwitchMaterial switchHideFinished = ViewBindings.findChildViewById(rootView, id);
-      if (switchHideFinished == null) {
+      id = R.id.swipeRefreshLayout;
+      SwipeRefreshLayout swipeRefreshLayout = ViewBindings.findChildViewById(rootView, id);
+      if (swipeRefreshLayout == null) {
         break missingId;
       }
 
       id = R.id.switchInvidiousRedirect;
       SwitchMaterial switchInvidiousRedirect = ViewBindings.findChildViewById(rootView, id);
       if (switchInvidiousRedirect == null) {
+        break missingId;
+      }
+
+      id = R.id.switchPullToReload;
+      SwitchMaterial switchPullToReload = ViewBindings.findChildViewById(rootView, id);
+      if (switchPullToReload == null) {
+        break missingId;
+      }
+
+      id = R.id.switchShowArchivedInSearch;
+      SwitchMaterial switchShowArchivedInSearch = ViewBindings.findChildViewById(rootView, id);
+      if (switchShowArchivedInSearch == null) {
         break missingId;
       }
 
@@ -342,11 +460,14 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      return new ActivityMainBinding((DrawerLayout) rootView, breadcrumbContainer, breadcrumbScroll,
-          btnDesktopMode, btnHome, btnResetProgress, drawerContent, drawerLayout, emptyMessage, fab,
-          fabNewFolder, fullscreenContainer, homeList, homeScreen, invidiousInstanceContainer,
-          invidiousInstanceGroup, radioNadeko, radioYewtu, searchResultsList, switchHideFinished,
-          switchInvidiousRedirect, switchShowConsumedToday, switchShowHidden, switchShowTags,
+      return new ActivityMainBinding((DrawerLayout) rootView, archiveBreadcrumbContainer,
+          archiveBreadcrumbScroll, archiveEmptyMessage, archiveList, archiveScreen,
+          breadcrumbContainer, breadcrumbScroll, btnArchiveBack, btnArchiveDateView, btnDesktopMode,
+          btnHome, btnResetProgress, drawerContent, drawerLayout, emptyMessage, fab,
+          fabArchiveNewFolder, fabNewFolder, fabSandboxAdd, fullscreenContainer, homeList,
+          homeScreen, invidiousInstanceContainer, invidiousInstanceGroup, radioNadeko, radioYewtu,
+          searchResultsList, swipeRefreshLayout, switchInvidiousRedirect, switchPullToReload,
+          switchShowArchivedInSearch, switchShowConsumedToday, switchShowHidden, switchShowTags,
           switchShowVideoProgress, switchYoutubeEmbed, urlBar, webView);
     }
     String missingId = rootView.getResources().getResourceName(id);

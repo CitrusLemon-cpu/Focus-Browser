@@ -4,6 +4,17 @@
             "outputFile": "com.example.focuslock.app-mergeDebugResources-1:/values-v23/values-v23.xml",
             "map": [
                 {
+                    "source": "/root/.gradle/caches/9.3.1/transforms/3cd27c8b8f1ab69aafe853b469507965/transformed/appcompat-1.7.1/res/values-v23/values-v23.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,20,34,35,36,39,43,44,45,46",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,190,325,400,487,1225,1975,2094,2221,2443,2667,2782,2889,3002",
+                        "endLines": "2,3,4,5,19,33,34,35,38,42,43,44,45,49",
+                        "endColumns": "134,134,74,86,12,12,118,126,12,12,114,106,112,12",
+                        "endOffsets": "185,320,395,482,1220,1970,2089,2216,2438,2662,2777,2884,2997,3227"
+                    }
+                },
+                {
                     "source": "/home/Focus-Browser/app/src/main/res/values-v23/themes.xml",
                     "from": {
                         "startLines": "2",
@@ -23,7 +34,7 @@
                     }
                 },
                 {
-                    "source": "/root/.gradle/caches/9.3.1/transforms/68abcf5f7e6876bc57552ae8deebcee7/transformed/material-1.13.0/res/values-v23/values-v23.xml",
+                    "source": "/root/.gradle/caches/9.3.1/transforms/f864c28eabd9643ab395b4a84e9b53da/transformed/material-1.13.0/res/values-v23/values-v23.xml",
                     "from": {
                         "startLines": "2,5,9,13,16,19,22,25,28,32",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4",
@@ -42,7 +53,7 @@
                     }
                 },
                 {
-                    "source": "/root/.gradle/caches/9.3.1/transforms/0b296c7182c2587f326f602042363785/transformed/cardview-1.0.0/res/values-v23/values-v23.xml",
+                    "source": "/root/.gradle/caches/9.3.1/transforms/bc49ee499cdf9170c4b3c030a31e4fe4/transformed/cardview-1.0.0/res/values-v23/values-v23.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",
@@ -58,17 +69,6 @@
                         "endLines": "52",
                         "endColumns": "12",
                         "endOffsets": "3377"
-                    }
-                },
-                {
-                    "source": "/root/.gradle/caches/9.3.1/transforms/7a2ec6fe9bcd0d5949b4977e12a88447/transformed/appcompat-1.7.1/res/values-v23/values-v23.xml",
-                    "from": {
-                        "startLines": "2,3,4,5,6,20,34,35,36,39,43,44,45,46",
-                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4",
-                        "startOffsets": "55,190,325,400,487,1225,1975,2094,2221,2443,2667,2782,2889,3002",
-                        "endLines": "2,3,4,5,19,33,34,35,38,42,43,44,45,49",
-                        "endColumns": "134,134,74,86,12,12,118,126,12,12,114,106,112,12",
-                        "endOffsets": "185,320,395,482,1220,1970,2089,2216,2438,2662,2777,2884,2997,3227"
                     }
                 }
             ]

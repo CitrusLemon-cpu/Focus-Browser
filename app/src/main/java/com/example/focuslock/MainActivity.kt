@@ -75,6 +75,8 @@ class MainActivity : AppCompatActivity() {
     private var showConsumedToday = false
     private var pullToReloadEnabled = true
     private var webViewPageScrollY = 0
+    private var sandboxExpiryHandler: android.os.Handler? = null
+    private var sandboxExpiryRunnable: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -378,6 +380,7 @@ class MainActivity : AppCompatActivity() {
                     null
                 )
                 binding.swipeRefreshLayout.isRefreshing = false
+                updateSandboxStarForCurrentView()
                 if (currentEmbedVideoId != null) return
 
                 if (url == "about:blank") {
@@ -617,6 +620,8 @@ class MainActivity : AppCompatActivity() {
         binding.fabNewFolder.setOnClickListener {
             showCreateFolderDialog()
         }
+
+        setupSandboxStarButton()
     }
 
     private fun applyDesktopMode() {
@@ -681,9 +686,11 @@ class MainActivity : AppCompatActivity() {
         if (binding.homeScreen.visibility == View.VISIBLE) {
             refreshHomeList()
         }
+        updateSandboxStarVisibility()
     }
 
     override fun onDestroy() {
+        cancelSandboxExpiry()
         super.onDestroy()
         android.webkit.CookieManager.getInstance().flush()
     }
@@ -744,6 +751,7 @@ currentEmbedVideoId = null
         binding.webView.visibility = View.GONE
         binding.fab.visibility = View.VISIBLE
         binding.fabNewFolder.visibility = View.VISIBLE
+        binding.fabSandboxAdd.visibility = View.GONE
         binding.swipeRefreshLayout.isEnabled = false
         binding.urlBar.setText("")
         binding.urlBar.clearFocus()
@@ -754,6 +762,7 @@ currentEmbedVideoId = null
         binding.searchResultsList.visibility = View.GONE
         refreshHomeList()
         updateDesktopToggleVisibility(null)
+        updateSandboxStarForCurrentView()
     }
 
     private fun showWebView() {
@@ -763,9 +772,207 @@ currentEmbedVideoId = null
         binding.fabNewFolder.visibility = View.GONE
         binding.fabArchiveNewFolder.visibility = View.GONE
         binding.swipeRefreshLayout.isEnabled = pullToReloadEnabled
+        updateSandboxStarForCurrentView()
+    }
+
+    private fun setupSandboxStarButton() {
+        val star = binding.fabSandboxAdd
+
+        var dragStartX = 0f
+        var dragStartY = 0f
+        var viewStartX = 0f
+        var viewStartY = 0f
+        var isDragging = false
+        val dragThreshold = 10f
+
+        star.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragStartX = event.rawX
+                    dragStartY = event.rawY
+                    viewStartX = v.x
+                    viewStartY = v.y
+                    isDragging = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - dragStartX
+                    val dy = event.rawY - dragStartY
+                    if (!isDragging && (kotlin.math.abs(dx) > dragThreshold || kotlin.math.abs(dy) > dragThreshold)) {
+                        isDragging = true
+                    }
+                    if (isDragging) {
+                        v.x = viewStartX + dx
+                        v.y = viewStartY + dy
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!isDragging) {
+                        showSandboxAddDialog()
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun updateSandboxStarVisibility() {
+        if (SandboxManager.isSandboxActive(this)) {
+            scheduleSandboxExpiry()
+        } else {
+            cancelSandboxExpiry()
+        }
+        updateSandboxStarForCurrentView()
+    }
+
+    private fun updateSandboxStarForCurrentView() {
+        binding.fabSandboxAdd.visibility = if (
+            SandboxManager.isSandboxActive(this) &&
+            binding.webView.visibility == View.VISIBLE &&
+            !binding.webView.url.isNullOrBlank() &&
+            binding.webView.url != "about:blank"
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+    }
+
+    private fun scheduleSandboxExpiry() {
+        cancelSandboxExpiry()
+        val remaining = SandboxManager.getTimeRemaining(this)
+        if (remaining <= 0L) {
+            onSandboxExpired()
+            return
+        }
+        sandboxExpiryHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        sandboxExpiryRunnable = Runnable { onSandboxExpired() }
+        sandboxExpiryHandler!!.postDelayed(sandboxExpiryRunnable!!, remaining)
+    }
+
+    private fun cancelSandboxExpiry() {
+        sandboxExpiryRunnable?.let { sandboxExpiryHandler?.removeCallbacks(it) }
+        sandboxExpiryHandler = null
+        sandboxExpiryRunnable = null
+    }
+
+    private fun onSandboxExpired() {
+        SandboxManager.endSandbox(this)
+        cancelSandboxExpiry()
+        updateSandboxStarForCurrentView()
+        android.widget.Toast.makeText(this, "Sandbox mode has ended", android.widget.Toast.LENGTH_LONG).show()
+
+        val currentUrl = binding.webView.url
+        if (
+            binding.webView.visibility == View.VISIBLE &&
+            !currentUrl.isNullOrBlank() &&
+            currentUrl != "about:blank" &&
+            !WhitelistManager.isUrlAllowed(this, currentUrl)
+        ) {
+            showHome()
+            showBlockedDialog(currentUrl)
+        }
+    }
+
+    private fun showSandboxAddDialog() {
+        val currentUrl = binding.webView.url
+        val currentTitle = binding.webView.title
+
+        if (currentUrl.isNullOrBlank() || currentUrl == "about:blank") {
+            android.widget.Toast.makeText(this, "No website loaded", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 0)
+        }
+
+        val urlInput = android.widget.EditText(this).apply {
+            hint = "URL"
+            setText(WhitelistManager.normalizeUrl(currentUrl))
+        }
+
+        val nameInput = android.widget.EditText(this).apply {
+            hint = "Display name (optional)"
+            if (!currentTitle.isNullOrBlank()) setText(currentTitle)
+        }
+
+        val folders = WhitelistManager.getFolders(this)
+        val folderChoices = mutableListOf<Pair<String?, String>>()
+        folderChoices.add(Pair(null, "Root (no folder)"))
+
+        fun collectFolders(parentId: String?, prefix: String) {
+            val children = folders.filter { it.parentId == parentId }.sortedBy { it.sortOrder }
+            for (folder in children) {
+                folderChoices.add(Pair(folder.id, "$prefix${folder.name}"))
+                collectFolders(folder.id, "$prefix  ")
+            }
+        }
+        collectFolders(null, "")
+
+        var selectedFolderId: String? = null
+        val folderSelector = android.widget.TextView(this).apply {
+            text = "Folder: Root (no folder)"
+            setPadding(0, 24, 0, 24)
+            textSize = 16f
+            setOnClickListener {
+                val names = folderChoices.map { it.second }.toTypedArray()
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Select Folder")
+                    .setItems(names) { _, which ->
+                        selectedFolderId = folderChoices[which].first
+                        text = "Folder: ${names[which]}"
+                    }
+                    .show()
+            }
+        }
+
+        layout.addView(urlInput)
+        layout.addView(nameInput)
+        layout.addView(folderSelector)
+
+        AlertDialog.Builder(this)
+            .setTitle("Add to Whitelist")
+            .setView(layout)
+            .setPositiveButton("Add", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+            .apply {
+                setOnShowListener {
+                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val url = urlInput.text.toString().trim()
+                        val name = nameInput.text.toString().trim()
+
+                        if (url.isEmpty()) {
+                            urlInput.error = "URL cannot be empty"
+                            return@setOnClickListener
+                        }
+
+                        val normalizedUrl = WhitelistManager.normalizeUrl(url)
+                        val existing = WhitelistManager.getWhitelist(this@MainActivity)
+                        if (existing.any { it.url == normalizedUrl }) {
+                            urlInput.error = "URL already whitelisted"
+                            return@setOnClickListener
+                        }
+
+                        WhitelistManager.addEntry(this@MainActivity, url, name, selectedFolderId)
+                        android.widget.Toast.makeText(
+                            this@MainActivity,
+                            "Added: ${name.ifEmpty { normalizedUrl }}",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        dismiss()
+                    }
+                }
+                show()
+            }
     }
 
     private fun getAllEntriesInFolderRecursive(folderId: String?): List<WhitelistEntry> {
+
         val result = mutableListOf<WhitelistEntry>()
         result.addAll(WhitelistManager.getEntriesInFolder(this, folderId))
         val subfolders = WhitelistManager.getSubfolders(this, folderId)
