@@ -433,6 +433,7 @@ object WhitelistManager {
     }
 
     fun isUrlInBlockedFolder(context: Context, url: String): Pair<Boolean, String?> {
+        if (SandboxManager.isSandboxActive(context)) return Pair(false, null)
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
         for (entry in whitelist) {
@@ -462,6 +463,7 @@ object WhitelistManager {
     }
 
     fun startLockInSession(context: Context, folderId: String, lockedUrl: String) {
+        if (SandboxManager.isSandboxActive(context)) return
         val folder = getFolders(context).find { it.id == folderId } ?: return
         if (isFolderEffectivelyBlocked(context, folderId)) return
         val expiresAt = System.currentTimeMillis() + (folder.lockInDurationMinutes * 60 * 1000L)
@@ -503,6 +505,7 @@ object WhitelistManager {
     }
 
     fun isLockInArmed(context: Context, folderId: String): Boolean {
+        if (SandboxManager.isSandboxActive(context)) return false
         val effectiveId = getEffectiveLockInFolderId(context, folderId) ?: return false
         return getLockInSession(context, effectiveId) == null
     }
@@ -625,6 +628,7 @@ object WhitelistManager {
     }
 
     fun isUrlBlockedByLockIn(context: Context, url: String): Boolean {
+        if (SandboxManager.isSandboxActive(context)) return false
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
         val folders = getFolders(context)
