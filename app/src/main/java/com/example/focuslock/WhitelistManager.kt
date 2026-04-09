@@ -433,6 +433,7 @@ object WhitelistManager {
     }
 
     fun isUrlInBlockedFolder(context: Context, url: String): Pair<Boolean, String?> {
+        if (SandboxManager.isSandboxActive(context)) return Pair(false, null)
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
         for (entry in whitelist) {
@@ -625,6 +626,7 @@ object WhitelistManager {
     }
 
     fun isUrlBlockedByLockIn(context: Context, url: String): Boolean {
+        if (SandboxManager.isSandboxActive(context)) return false
         val normalizedUrl = normalizeUrl(url)
         val whitelist = getWhitelist(context)
         val folders = getFolders(context)
