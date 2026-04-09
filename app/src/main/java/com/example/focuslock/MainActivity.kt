@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private var showTags = false
     private var showVideoProgress = false
     private var showConsumedToday = false
+    private var webViewPageScrollY = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -145,6 +146,11 @@ class MainActivity : AppCompatActivity() {
                 descriptionDirty = false
                 pendingDescriptionText = null
             }
+
+            @android.webkit.JavascriptInterface
+            fun onScrollChanged(scrollY: Int) {
+                webViewPageScrollY = scrollY
+            }
         }, "FocusBridge")
 
         binding.swipeRefreshLayout.setOnRefreshListener {
@@ -157,7 +163,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.swipeRefreshLayout.setOnChildScrollUpCallback { _, _ ->
-            binding.webView.canScrollVertically(-1)
+            webViewPageScrollY > 0
         }
 
         binding.switchShowHidden.isChecked = false
@@ -338,8 +344,19 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                webViewPageScrollY = 0
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                view?.evaluateJavascript(
+                    "(function(){window.addEventListener('scroll',function(){" +
+                    "FocusBridge.onScrollChanged(Math.round(window.scrollY));}" +
+                    ",{passive:true,capture:true});})();",
+                    null
+                )
                 binding.swipeRefreshLayout.isRefreshing = false
                 if (currentEmbedVideoId != null) return
 
