@@ -1249,8 +1249,6 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun refreshSettingsArchiveList() {
         if (!::binding.isInitialized) return
-        val archiveLockInEnabled = ArchiveManager.isArchiveLockInEnabled(this)
-        val activeSession = ArchiveManager.getArchiveLockInSession(this)
         val items = mutableListOf<SettingsArchiveItem>()
 
         if (settingsArchiveSearchQuery.isNotEmpty()) {
@@ -1259,18 +1257,14 @@ class SettingsActivity : AppCompatActivity() {
                 it.name.lowercase().contains(query) || it.url.lowercase().contains(query)
             }
             for (entry in matches) {
-                val isLocked = archiveLockInEnabled && activeSession != null &&
-                    WhitelistManager.normalizeUrl(activeSession.first) != WhitelistManager.normalizeUrl(entry.url)
-                items.add(SettingsArchiveItem.EntryItem(entry, isLocked))
+                items.add(SettingsArchiveItem.EntryItem(entry, false))
             }
         } else if (settingsArchiveDateViewMode) {
             val byMonth = ArchiveManager.getArchivedEntriesByMonth(this)
             for ((label, entries) in byMonth) {
                 items.add(SettingsArchiveItem.DateHeader(label))
                 for (entry in entries) {
-                    val isLocked = archiveLockInEnabled && activeSession != null &&
-                        WhitelistManager.normalizeUrl(activeSession.first) != WhitelistManager.normalizeUrl(entry.url)
-                    items.add(SettingsArchiveItem.EntryItem(entry, isLocked))
+                    items.add(SettingsArchiveItem.EntryItem(entry, false))
                 }
             }
         } else {
@@ -1280,9 +1274,7 @@ class SettingsActivity : AppCompatActivity() {
             }
             val entries = ArchiveManager.getEntriesInArchiveFolder(this, currentSettingsArchiveFolderId)
             for (entry in entries.sortedBy { it.sortOrder }) {
-                val isLocked = archiveLockInEnabled && activeSession != null &&
-                    WhitelistManager.normalizeUrl(activeSession.first) != WhitelistManager.normalizeUrl(entry.url)
-                items.add(SettingsArchiveItem.EntryItem(entry, isLocked))
+                items.add(SettingsArchiveItem.EntryItem(entry, false))
             }
         }
 
@@ -1306,34 +1298,6 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun handleSettingsArchiveEntryTap(entry: ArchivedEntry) {
-        val archiveLockInEnabled = ArchiveManager.isArchiveLockInEnabled(this)
-        val activeSession = ArchiveManager.getArchiveLockInSession(this)
-
-        if (archiveLockInEnabled && activeSession == null) {
-            val duration = ArchiveManager.getArchiveLockInDurationMinutes(this)
-            AlertDialog.Builder(this)
-                .setTitle("⚠️ Start Archive Lock-in?")
-                .setMessage("You will be locked to \"${entry.name}\" for $duration minute(s).\n\nAll other archived sites will be inaccessible until the timer expires.")
-                .setPositiveButton("Lock In") { _, _ ->
-                    ArchiveManager.startArchiveLockIn(this, entry.url)
-                    refreshSettingsArchiveList()
-                    showSettingsArchiveRestoreDialog(entry)
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
-            return
-        }
-
-        if (archiveLockInEnabled && activeSession != null) {
-            val lockedUrl = WhitelistManager.normalizeUrl(activeSession.first)
-            val thisUrl = WhitelistManager.normalizeUrl(entry.url)
-            if (lockedUrl != thisUrl) {
-                val remaining = ((activeSession.second - System.currentTimeMillis()) / 60000).coerceAtLeast(1)
-                Toast.makeText(this, "Archive lock-in active — ${remaining}m remaining", Toast.LENGTH_SHORT).show()
-                return
-            }
-        }
-
         showSettingsArchiveRestoreDialog(entry)
     }
 
@@ -1573,44 +1537,6 @@ class SettingsActivity : AppCompatActivity() {
             layout.addView(descInput)
         }
 
-        if (ArchiveManager.isArchiveLockInEnabled(this)) {
-            val lockInLabel = TextView(this).apply {
-                text = "Archive Lock-in"
-                textSize = 12f
-                setTextColor(android.graphics.Color.GRAY)
-                setPadding(0, 24, 0, 8)
-            }
-            layout.addView(lockInLabel)
-
-            val activeSession = ArchiveManager.getArchiveLockInSession(this)
-            val normalizedEntryUrl = WhitelistManager.normalizeUrl(entry.url)
-            val activeUrl = activeSession?.let { WhitelistManager.normalizeUrl(it.first) }
-            if (activeSession != null && activeUrl == normalizedEntryUrl) {
-                val remaining = ((activeSession.second - System.currentTimeMillis()) / 60000).coerceAtLeast(1)
-                val statusText = TextView(this).apply {
-                    text = "🔒 Lock-in active — ${remaining}m remaining"
-                    textSize = 14f
-                    setPadding(0, 8, 0, 8)
-                }
-                layout.addView(statusText)
-
-                val endSessionBtn = com.google.android.material.button.MaterialButton(this).apply {
-                    text = "End Lock-in Session"
-                    setOnClickListener {
-                        showEndArchiveLockInDialog()
-                    }
-                }
-                layout.addView(endSessionBtn)
-            } else if (activeSession == null) {
-                val statusText = TextView(this).apply {
-                    text = "🔓 Armed"
-                    textSize = 14f
-                    setPadding(0, 8, 0, 8)
-                }
-                layout.addView(statusText)
-            }
-        }
-
         val scrollView = android.widget.ScrollView(this).apply {
             addView(layout)
         }
@@ -1631,41 +1557,6 @@ class SettingsActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
-    }
-
-    private fun showEndArchiveLockInDialog() {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 0)
-        }
-        val passwordInput = EditText(this).apply {
-            hint = "Enter password"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            filters = arrayOf(InputFilter.LengthFilter(10))
-        }
-        layout.addView(passwordInput)
-        AlertDialog.Builder(this)
-            .setTitle("End Archive Lock-in")
-            .setView(layout)
-            .setCancelable(false)
-            .setPositiveButton("End Session", null)
-            .setNegativeButton("Cancel", null)
-            .create()
-            .apply {
-                setOnShowListener {
-                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                        if (PasswordManager.verifyPassword(this@SettingsActivity, passwordInput.text.toString())) {
-                            ArchiveManager.endArchiveLockIn(this@SettingsActivity)
-                            dismiss()
-                            refreshSettingsArchiveList()
-                            Toast.makeText(this@SettingsActivity, "Archive lock-in ended", Toast.LENGTH_SHORT).show()
-                        } else {
-                            passwordInput.error = "Incorrect password"
-                        }
-                    }
-                }
-                show()
-            }
     }
 
     private fun showSettingsArchiveFolderOptionsDialog(folder: ArchiveFolder) {

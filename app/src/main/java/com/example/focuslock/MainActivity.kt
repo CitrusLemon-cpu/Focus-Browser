@@ -1343,13 +1343,24 @@ currentEmbedVideoId = null
         val items = mutableListOf<ArchiveItem>()
         val anyLockInActive = ArchiveManager.isHideIfLockInActive(this) &&
             WhitelistManager.getFolders(this).any { WhitelistManager.isLockInActive(this, it.id) }
+        val archiveLockInEnabled = ArchiveManager.isArchiveLockInEnabled(this)
+        val archiveLockInSession = ArchiveManager.getArchiveLockInSession(this)
+
+        fun isEntryBlockedByArchiveLockIn(entry: ArchivedEntry): Boolean {
+            if (!archiveLockInEnabled) return false
+            val session = archiveLockInSession ?: return false
+            val lockedUrl = WhitelistManager.normalizeUrl(session.first)
+            val entryUrl = WhitelistManager.normalizeUrl(entry.url)
+            return lockedUrl != entryUrl
+        }
 
         if (archiveDateViewMode) {
             val byMonth = ArchiveManager.getArchivedEntriesByMonth(this)
             for ((monthLabel, entries) in byMonth) {
                 items.add(ArchiveItem.DateHeader(monthLabel))
                 for (entry in entries) {
-                    items.add(ArchiveItem.EntryItem(entry, isBlocked = anyLockInActive))
+                    val blocked = anyLockInActive || isEntryBlockedByArchiveLockIn(entry)
+                    items.add(ArchiveItem.EntryItem(entry, isBlocked = blocked))
                 }
             }
         } else {
@@ -1359,7 +1370,8 @@ currentEmbedVideoId = null
             }
             val entries = ArchiveManager.getEntriesInArchiveFolder(this, currentArchiveFolderId)
             for (entry in entries.sortedBy { it.sortOrder }) {
-                items.add(ArchiveItem.EntryItem(entry, isBlocked = anyLockInActive))
+                val blocked = anyLockInActive || isEntryBlockedByArchiveLockIn(entry)
+                items.add(ArchiveItem.EntryItem(entry, isBlocked = blocked))
             }
         }
 
@@ -1378,15 +1390,54 @@ currentEmbedVideoId = null
             },
             onFolderLongPress = { folder -> showArchiveFolderOptionsDialog(folder) },
             onEntryClick = { entry ->
-                if (!anyLockInActive) {
-                    val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
-                        entry.url
-                    } else {
-                        "https://${entry.url}"
+                val lockInEnabled = ArchiveManager.isArchiveLockInEnabled(this)
+                val currentSession = ArchiveManager.getArchiveLockInSession(this)
+
+                when {
+                    anyLockInActive -> {
                     }
-                    hideArchive()
-                    showWebView()
-                    binding.webView.loadUrl(url)
+                    lockInEnabled && currentSession == null -> {
+                        val duration = ArchiveManager.getArchiveLockInDurationMinutes(this)
+                        AlertDialog.Builder(this)
+                            .setTitle("⚠️ Start Archive Lock-in?")
+                            .setMessage(
+                                "You will be locked to \"${entry.name}\" for $duration minute(s).\n\n" +
+                                    "All other archived sites will be blocked until the timer expires."
+                            )
+                            .setPositiveButton("Lock In") { _, _ ->
+                                ArchiveManager.startArchiveLockIn(this, entry.url)
+                                val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
+                                    entry.url
+                                } else {
+                                    "https://${entry.url}"
+                                }
+                                hideArchive()
+                                showWebView()
+                                binding.webView.loadUrl(url)
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                    lockInEnabled && currentSession != null -> {
+                        val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
+                            entry.url
+                        } else {
+                            "https://${entry.url}"
+                        }
+                        hideArchive()
+                        showWebView()
+                        binding.webView.loadUrl(url)
+                    }
+                    else -> {
+                        val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
+                            entry.url
+                        } else {
+                            "https://${entry.url}"
+                        }
+                        hideArchive()
+                        showWebView()
+                        binding.webView.loadUrl(url)
+                    }
                 }
             },
             onEntryLongPress = { entry -> showArchiveEntryOptionsDialog(entry) }
