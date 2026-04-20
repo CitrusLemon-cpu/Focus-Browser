@@ -102,6 +102,9 @@ class MainActivity : AppCompatActivity() {
             fileUploadCallback = null
         }
         defaultBrowserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { _ ->
+            // Treat cancelled RoleManager picker as a dismissal to avoid nagging
+            val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
         }
 
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -654,6 +657,9 @@ class MainActivity : AppCompatActivity() {
                 .setNegativeButton("Not Now") { _, _ ->
                     prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
                 }
+                .setOnCancelListener {
+                    prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
+                }
                 .setCancelable(true)
                 .show()
         } else {
@@ -674,6 +680,9 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 .setNegativeButton("Not Now") { _, _ ->
+                    prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
+                }
+                .setOnCancelListener {
                     prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
                 }
                 .setCancelable(true)
