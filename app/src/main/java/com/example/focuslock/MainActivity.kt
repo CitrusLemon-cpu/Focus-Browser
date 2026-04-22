@@ -2588,7 +2588,7 @@ currentEmbedVideoId = null
     }
 
     private fun showArchiveEntryOptionsDialog(entry: ArchivedEntry) {
-        val options = arrayOf("Restore Site", "Move to Folder", "Edit")
+        val options = arrayOf("Restore Site", "Move to Folder", "Edit", "Delete")
         AlertDialog.Builder(this)
             .setTitle(entry.name)
             .setItems(options) { _, which ->
@@ -2596,6 +2596,7 @@ currentEmbedVideoId = null
                     0 -> showArchiveRestoreDialog(entry)
                     1 -> showArchiveMoveToFolderDialog(entry)
                     2 -> showArchiveEditDialog(entry)
+                    3 -> showArchiveDeleteDialog(entry)
                 }
             }
             .show()
@@ -2840,6 +2841,19 @@ currentEmbedVideoId = null
                     descInput?.text?.toString()?.trim()
                 )
                 refreshArchiveList()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showArchiveDeleteDialog(entry: ArchivedEntry) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Archived Site")
+            .setMessage("Permanently delete \"${entry.name}\"? This cannot be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                ArchiveManager.deleteArchivedEntry(this, entry.url)
+                refreshArchiveList()
+                android.widget.Toast.makeText(this, "${entry.name} deleted", android.widget.Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()
