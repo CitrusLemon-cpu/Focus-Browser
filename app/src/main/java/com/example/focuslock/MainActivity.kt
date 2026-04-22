@@ -34,6 +34,7 @@ import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
+import android.widget.Toast
 import com.google.android.material.button.MaterialButton
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,6 +56,7 @@ class MainActivity : AppCompatActivity() {
     private val currentFolderId: String? get() = folderStack.last()
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
+    private lateinit var defaultBrowserLauncher: ActivityResultLauncher<Intent>
     private var activeFilterTag: String? = null
     private var isSearchMode = false
     private var isArchiveMode = false
@@ -98,6 +100,11 @@ class MainActivity : AppCompatActivity() {
                 fileUploadCallback?.onReceiveValue(null)
             }
             fileUploadCallback = null
+        }
+        defaultBrowserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { _ ->
+            // Treat cancelled RoleManager picker as a dismissal to avoid nagging
+            val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
         }
 
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -622,6 +629,65 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupSandboxStarButton()
+        promptDefaultBrowser()
+    }
+
+    private fun promptDefaultBrowser() {
+        val prefs = getSharedPreferences("focus_lock_prefs", Context.MODE_PRIVATE)
+        val lastDismissed = prefs.getLong("default_browser_prompt_dismissed", 0L)
+        if (lastDismissed > 0 && System.currentTimeMillis() - lastDismissed < 7 * 24 * 60 * 60 * 1000L) {
+            return
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(android.app.role.RoleManager::class.java)
+            if (roleManager.isRoleHeld(android.app.role.RoleManager.ROLE_BROWSER)) {
+                return
+            }
+            if (!roleManager.isRoleAvailable(android.app.role.RoleManager.ROLE_BROWSER)) {
+                return
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Set as Default Browser")
+                .setMessage("Would you like to make Focus your default browser?")
+                .setPositiveButton("Yes") { _, _ ->
+                    val intent = roleManager.createRequestRoleIntent(android.app.role.RoleManager.ROLE_BROWSER)
+                    defaultBrowserLauncher.launch(intent)
+                }
+                .setNegativeButton("Not Now") { _, _ ->
+                    prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
+                }
+                .setOnCancelListener {
+                    prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
+                }
+                .setCancelable(true)
+                .show()
+        } else {
+            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
+            val resolveInfo = packageManager.resolveActivity(browserIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            if (resolveInfo?.activityInfo?.packageName == packageName) {
+                return
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Set as Default Browser")
+                .setMessage("Would you like to make Focus your default browser?")
+                .setPositiveButton("Yes") { _, _ ->
+                    try {
+                        val intent = Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+                        startActivity(intent)
+                    } catch (_: Exception) {
+                        Toast.makeText(this, "Please set Focus as default in Settings > Apps > Default apps", Toast.LENGTH_LONG).show()
+                    }
+                }
+                .setNegativeButton("Not Now") { _, _ ->
+                    prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
+                }
+                .setOnCancelListener {
+                    prefs.edit().putLong("default_browser_prompt_dismissed", System.currentTimeMillis()).apply()
+                }
+                .setCancelable(true)
+                .show()
+        }
     }
 
     private fun applyDesktopMode() {
