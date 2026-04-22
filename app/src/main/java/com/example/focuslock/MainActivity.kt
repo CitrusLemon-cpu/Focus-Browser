@@ -598,7 +598,15 @@ class MainActivity : AppCompatActivity() {
             showCreateArchiveFolderDialog()
         }
 
-        showHome()
+        val intentUrl = intent?.data?.toString()
+        if (intentUrl != null && (intent?.action == Intent.ACTION_VIEW)) {
+            showWebView()
+            applyUserAgentForUrl(intentUrl)
+            binding.webView.loadUrl(intentUrl)
+            binding.urlBar.setText(intentUrl)
+        } else {
+            showHome()
+        }
 
         binding.btnHome.setOnClickListener {
             if (currentEmbedVideoId != null && descriptionEditMode && descriptionDirty) {
@@ -753,6 +761,18 @@ class MainActivity : AppCompatActivity() {
             refreshHomeList()
         }
         updateSandboxStarVisibility()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val url = intent.data?.toString()
+        if (url != null && intent.action == Intent.ACTION_VIEW) {
+            showWebView()
+            applyUserAgentForUrl(url)
+            binding.webView.loadUrl(url)
+            binding.urlBar.setText(url)
+        }
     }
 
     override fun onDestroy() {
