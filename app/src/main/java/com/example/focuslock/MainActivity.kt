@@ -295,6 +295,20 @@ class MainActivity : AppCompatActivity() {
                 val url = request?.url ?: return false
                 if (request.isForMainFrame.not()) return false
 
+                // Handle custom URL schemes (deep links like mydayforceapp://, intent://, etc.)
+                // Dispatch them as Android intents so the system routes to the correct app
+                val scheme = url.scheme?.lowercase()
+                if (scheme != null && scheme != "http" && scheme != "https" && scheme != "about" && scheme != "data" && scheme != "javascript") {
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, url)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        // No app installed to handle this scheme — ignore
+                    }
+                    return true
+                }
+
                 if (url.scheme == "http") {
                     val httpsUrl = url.buildUpon().scheme("https").build().toString()
                     view?.post { view.loadUrl(httpsUrl) }
