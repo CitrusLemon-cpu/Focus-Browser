@@ -1375,7 +1375,7 @@ class SettingsActivity : AppCompatActivity() {
             },
             onFolderLongPress = { folder -> showSettingsArchiveFolderOptionsDialog(folder) },
             onEntryClick = { entry -> handleSettingsArchiveEntryTap(entry) },
-            onEntryLongPress = { entry -> showArchiveEntryEditDialog(entry) }
+            onEntryLongPress = { entry -> showSettingsArchiveEntryOptionsDialog(entry) }
         )
     }
 
@@ -1419,6 +1419,32 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this, "${entry.name} restored", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showSettingsArchiveEntryOptionsDialog(entry: ArchivedEntry) {
+        val options = arrayOf("Restore", "Edit", "Delete")
+        AlertDialog.Builder(this)
+            .setTitle(entry.name)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showSettingsArchiveRestoreDialog(entry)
+                    1 -> showArchiveEntryEditDialog(entry)
+                    2 -> {
+                        AlertDialog.Builder(this)
+                            .setTitle("Delete Archived Site")
+                            .setMessage("Permanently delete \"${entry.name}\"? This cannot be undone.")
+                            .setPositiveButton("Delete") { _, _ ->
+                                ArchiveManager.deleteArchivedEntry(this, entry.url)
+                                refreshSettingsArchiveList()
+                                refreshList()
+                                Toast.makeText(this, "${entry.name} deleted", Toast.LENGTH_SHORT).show()
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                }
+            }
             .show()
     }
 

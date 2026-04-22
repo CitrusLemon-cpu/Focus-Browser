@@ -259,6 +259,13 @@ object ArchiveManager {
         }
     }
 
+    fun deleteArchivedEntry(context: Context, url: String) {
+        val normalizedUrl = WhitelistManager.normalizeUrl(url)
+        val entries = getArchivedEntries(context)
+            .filterNot { WhitelistManager.normalizeUrl(it.url) == normalizedUrl }
+        saveArchivedEntries(context, entries)
+    }
+
     fun getArchivedEntriesByMonth(context: Context): LinkedHashMap<String, List<ArchivedEntry>> {
         val formatter = SimpleDateFormat("MMM yyyy", Locale.getDefault())
         val grouped = linkedMapOf<String, MutableList<ArchivedEntry>>()
