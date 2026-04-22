@@ -599,7 +599,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val intentUrl = intent?.data?.toString()
-        if (intentUrl != null && (intent?.action == Intent.ACTION_VIEW)) {
+        val intentScheme = intent?.data?.scheme?.lowercase()
+        if (intentUrl != null && intent?.action == Intent.ACTION_VIEW && (intentScheme == "http" || intentScheme == "https")) {
             showWebView()
             applyUserAgentForUrl(intentUrl)
             binding.webView.loadUrl(intentUrl)
@@ -767,7 +768,8 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val url = intent.data?.toString()
-        if (url != null && intent.action == Intent.ACTION_VIEW) {
+        val scheme = intent.data?.scheme?.lowercase()
+        if (url != null && intent.action == Intent.ACTION_VIEW && (scheme == "http" || scheme == "https")) {
             showWebView()
             applyUserAgentForUrl(url)
             binding.webView.loadUrl(url)
