@@ -39,6 +39,13 @@
         <activity
             android:name=".SettingsActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <service
+            android:name=".FocusCustomTabsService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.support.customtabs.action.CustomTabsService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>
