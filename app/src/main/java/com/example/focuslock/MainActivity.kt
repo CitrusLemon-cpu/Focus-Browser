@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity() {
     private var showHiddenItems = false
     private var currentEmbedVideoId: String? = null
     private var currentEmbedEntryUrl: String? = null
+    private var currentEmbedIsArchived = false
     private var descriptionEditMode = false
     private var descriptionDirty = false
     private var pendingDescriptionText: String? = null
@@ -155,7 +156,22 @@ class MainActivity : AppCompatActivity() {
             fun saveDescription(text: String) {
                 val entryUrl = currentEmbedEntryUrl ?: return
                 runOnUiThread {
-                    WhitelistManager.setEntryDescription(this@MainActivity, entryUrl, text)
+                    if (currentEmbedIsArchived) {
+                        val archivedEntry = ArchiveManager.getArchivedEntries(this@MainActivity).find {
+                            WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(entryUrl)
+                        }
+                        if (archivedEntry != null) {
+                            ArchiveManager.updateArchivedEntry(
+                                this@MainActivity,
+                                archivedEntry.url,
+                                archivedEntry.name,
+                                archivedEntry.tags,
+                                text
+                            )
+                        }
+                    } else {
+                        WhitelistManager.setEntryDescription(this@MainActivity, entryUrl, text)
+                    }
                 }
                 descriptionEditMode = false
                 descriptionDirty = false
@@ -334,6 +350,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 currentEmbedVideoId = null
+                currentEmbedIsArchived = false
 
                 if (invidiousRedirectEnabled && isYouTubeUrl(urlString)) {
                     val rewritten = rewriteYouTubeToInvidious(urlString)
@@ -784,6 +801,12 @@ class MainActivity : AppCompatActivity() {
         val url = intent.data?.toString()
         val scheme = intent.data?.scheme?.lowercase()
         if (url != null && intent.action == Intent.ACTION_VIEW && (scheme == "http" || scheme == "https")) {
+            currentEmbedVideoId = null
+            currentEmbedEntryUrl = null
+            currentEmbedIsArchived = false
+            descriptionEditMode = false
+            descriptionDirty = false
+            pendingDescriptionText = null
             showWebView()
             applyUserAgentForUrl(url)
             binding.webView.loadUrl(url)
@@ -814,7 +837,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-currentEmbedVideoId = null
+        currentEmbedVideoId = null
+        currentEmbedIsArchived = false
 
         if (invidiousRedirectEnabled && isYouTubeUrl(url)) {
             val rewritten = rewriteYouTubeToInvidious(url)
@@ -839,6 +863,7 @@ currentEmbedVideoId = null
     private fun showHome() {
         currentEmbedVideoId = null
         currentEmbedEntryUrl = null
+        currentEmbedIsArchived = false
         descriptionEditMode = false
         descriptionDirty = false
         pendingDescriptionText = null
@@ -1283,6 +1308,11 @@ currentEmbedVideoId = null
                 onEntryClick = { entry ->
                     val url = if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) entry.url
                     else "https://${entry.url}"
+
+                    if (showHiddenItems && !entry.description.isNullOrBlank() && isEntryLockedOutByLockIn(entry, url)) {
+                        showLockedOutNotesDialog(entry)
+                        return@HomeAdapter
+                    }
 
                     if (entry.sourceFolderId != null && WhitelistManager.isFolderEffectivelyBlocked(this, entry.sourceFolderId)) {
                         val allFolders = WhitelistManager.getFolders(this)
@@ -2108,6 +2138,32 @@ currentEmbedVideoId = null
             .setMessage("You are currently locked to another site.\n\nTime remaining: $minutes minute(s)")
             .setPositiveButton("OK", null)
             .show()
+    }
+
+    private fun showLockedOutNotesDialog(entry: WhitelistEntry) {
+        AlertDialog.Builder(this)
+            .setTitle(entry.name)
+            .setMessage(entry.description)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
+    private fun isEntryLockedOutByLockIn(entry: WhitelistEntry, url: String): Boolean {
+        val folderId = entry.folderId ?: return false
+        val allFolders = WhitelistManager.getFolders(this)
+        val currentFolder = allFolders.find { it.id == folderId } ?: return false
+        if (currentFolder.isCurated && currentFolder.ignoreLockInMode) {
+            return false
+        }
+        if (currentFolder.isCurated) {
+            val originalFolderId = entry.sourceFolderId ?: folderId
+            val effectiveLockInId = WhitelistManager.getEffectiveLockInFolderId(this, originalFolderId) ?: return false
+            val session = WhitelistManager.getLockInSession(this, effectiveLockInId) ?: return false
+            return WhitelistManager.normalizeUrl(url) != WhitelistManager.normalizeUrl(session.first!!)
+        }
+        val lockInFolderId = WhitelistManager.getEffectiveLockInFolderId(this, folderId) ?: folderId
+        val session = WhitelistManager.getLockInSession(this, lockInFolderId) ?: return false
+        return WhitelistManager.normalizeUrl(url) != WhitelistManager.normalizeUrl(session.first!!)
     }
 
     private fun showEndLockInSessionDialog(folderId: String, dialog: AlertDialog?) {
@@ -3199,12 +3255,28 @@ currentEmbedVideoId = null
             .setMessage("Save your description note before leaving?")
             .setPositiveButton("Save") { _, _ ->
                 if (entryUrl != null) {
-                    WhitelistManager.setEntryDescription(this, entryUrl, text)
+                    if (currentEmbedIsArchived) {
+                        val archivedEntry = ArchiveManager.getArchivedEntries(this).find {
+                            WhitelistManager.normalizeUrl(it.url) == WhitelistManager.normalizeUrl(entryUrl)
+                        }
+                        if (archivedEntry != null) {
+                            ArchiveManager.updateArchivedEntry(
+                                this,
+                                archivedEntry.url,
+                                archivedEntry.name,
+                                archivedEntry.tags,
+                                text
+                            )
+                        }
+                    } else {
+                        WhitelistManager.setEntryDescription(this, entryUrl, text)
+                    }
                 }
                 descriptionEditMode = false
                 descriptionDirty = false
                 pendingDescriptionText = null
                 currentEmbedVideoId = null
+                currentEmbedIsArchived = false
                 showHome()
             }
             .setNegativeButton("Discard") { _, _ ->
@@ -3212,6 +3284,7 @@ currentEmbedVideoId = null
                 descriptionDirty = false
                 pendingDescriptionText = null
                 currentEmbedVideoId = null
+                currentEmbedIsArchived = false
                 showHome()
             }
             .setNeutralButton("Keep Editing", null)
@@ -3238,10 +3311,33 @@ currentEmbedVideoId = null
 
         val isSpecificEntry = matchingEntry != null &&
             VideoProgressManager.extractVideoId("https://${matchingEntry.url}") == videoId
-        val entryDescription = if (isSpecificEntry) matchingEntry?.description else null
-        currentEmbedEntryUrl = if (isSpecificEntry) matchingEntry?.url else null
+        val matchingArchivedEntry = if (isSpecificEntry) null else ArchiveManager.getArchivedEntries(this).find { entry ->
+            VideoProgressManager.extractVideoId("https://${entry.url}") == videoId
+        }
+        val entryDescription = when {
+            isSpecificEntry -> matchingEntry?.description
+            matchingArchivedEntry != null -> matchingArchivedEntry.description
+            else -> null
+        }
+        val descriptionTags = when {
+            isSpecificEntry -> matchingEntry?.tags ?: emptyList()
+            matchingArchivedEntry != null -> matchingArchivedEntry.tags
+            else -> tags
+        }
+        currentEmbedEntryUrl = when {
+            isSpecificEntry -> matchingEntry?.url
+            matchingArchivedEntry != null -> matchingArchivedEntry.url
+            else -> null
+        }
+        currentEmbedIsArchived = matchingArchivedEntry != null
 
-        val html = buildEmbedHtml(videoId, "Loading...", tags, entryDescription, isSpecificEntry)
+        val html = buildEmbedHtml(
+            videoId,
+            "Loading...",
+            descriptionTags,
+            entryDescription,
+            isSpecificEntry || matchingArchivedEntry != null
+        )
         binding.webView.loadDataWithBaseURL("https://focus-embed.local/", html, "text/html", "UTF-8", null)
     }
 
@@ -3272,6 +3368,7 @@ currentEmbedVideoId = null
                     return
                 }
                 currentEmbedVideoId = null
+                currentEmbedIsArchived = false
                 showHome()
             } else if (binding.webView.canGoBack()) {
                 binding.webView.goBack()
