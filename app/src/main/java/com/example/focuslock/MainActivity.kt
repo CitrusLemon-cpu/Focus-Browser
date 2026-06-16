@@ -801,6 +801,12 @@ class MainActivity : AppCompatActivity() {
         val url = intent.data?.toString()
         val scheme = intent.data?.scheme?.lowercase()
         if (url != null && intent.action == Intent.ACTION_VIEW && (scheme == "http" || scheme == "https")) {
+            currentEmbedVideoId = null
+            currentEmbedEntryUrl = null
+            currentEmbedIsArchived = false
+            descriptionEditMode = false
+            descriptionDirty = false
+            pendingDescriptionText = null
             showWebView()
             applyUserAgentForUrl(url)
             binding.webView.loadUrl(url)
