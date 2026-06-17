@@ -77,7 +77,6 @@ class MainActivity : AppCompatActivity() {
     private var showVideoProgress = false
     private var showConsumedToday = false
     private var pullToReloadEnabled = true
-    private var webViewPageScrollY = 0
     private var sandboxExpiryHandler: android.os.Handler? = null
     private var sandboxExpiryRunnable: Runnable? = null
 
@@ -184,11 +183,6 @@ class MainActivity : AppCompatActivity() {
                 descriptionDirty = false
                 pendingDescriptionText = null
             }
-
-            @android.webkit.JavascriptInterface
-            fun onScrollChanged(scrollY: Int) {
-                webViewPageScrollY = scrollY
-            }
         }, "FocusBridge")
 
         binding.swipeRefreshLayout.setOnRefreshListener {
@@ -201,7 +195,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.swipeRefreshLayout.setOnChildScrollUpCallback { _, _ ->
-            webViewPageScrollY > 0
+            binding.webView.canScrollVertically(-1)
         }
 
         binding.switchShowHidden.isChecked = false
@@ -404,19 +398,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                webViewPageScrollY = 0
-            }
-
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                view?.evaluateJavascript(
-                    "(function(){window.addEventListener('scroll',function(){" +
-                    "FocusBridge.onScrollChanged(Math.round(window.scrollY));}" +
-                    ",{passive:true,capture:true});})();",
-                    null
-                )
                 binding.swipeRefreshLayout.isRefreshing = false
                 updateSandboxStarForCurrentView()
                 if (currentEmbedVideoId != null) return
@@ -574,7 +557,7 @@ class MainActivity : AppCompatActivity() {
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
                 if (velocityY < -900 && !binding.homeList.canScrollVertically(1)) {
                     if (!isArchiveMode && !isSearchMode) {
-                        showArchive()
+                        binding.archiveRevealBar.visibility = View.VISIBLE
                         return true
                     }
                 }
@@ -585,6 +568,17 @@ class MainActivity : AppCompatActivity() {
             override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
                 archiveOpenGesture.onTouchEvent(e)
                 return false
+            }
+        })
+        binding.archiveRevealBar.setOnClickListener {
+            hideArchiveRevealBar()
+            showArchive()
+        }
+        binding.homeList.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                if (dy != 0) {
+                    hideArchiveRevealBar()
+                }
             }
         })
 
@@ -861,6 +855,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHome() {
+        hideArchiveRevealBar()
         currentEmbedVideoId = null
         currentEmbedEntryUrl = null
         currentEmbedIsArchived = false
@@ -1447,6 +1442,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enterSearchMode() {
+        hideArchiveRevealBar()
         isSearchMode = true
         binding.homeList.visibility = View.GONE
         binding.emptyMessage.visibility = View.GONE
@@ -1461,6 +1457,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exitSearchMode() {
+        hideArchiveRevealBar()
         isSearchMode = false
         binding.searchResultsList.visibility = View.GONE
         binding.urlBar.setText("")
@@ -1472,6 +1469,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exitSearchModeAndRefresh() {
+        hideArchiveRevealBar()
         isSearchMode = false
         binding.searchResultsList.visibility = View.GONE
         binding.urlBar.setText("")
@@ -1483,6 +1481,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun navigateToFolder(folder: Folder) {
+        hideArchiveRevealBar()
         isSearchMode = false
         binding.searchResultsList.visibility = View.GONE
         binding.urlBar.setText("")
@@ -1668,6 +1667,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showArchive() {
+        hideArchiveRevealBar()
         isArchiveMode = true
         archiveFolderStack.clear()
         archiveFolderStack.add(null)
@@ -1685,6 +1685,10 @@ class MainActivity : AppCompatActivity() {
         refreshArchiveList()
         updateArchiveBreadcrumb()
         binding.fabArchiveNewFolder.visibility = if (archiveDateViewMode) View.GONE else View.VISIBLE
+    }
+
+    private fun hideArchiveRevealBar() {
+        binding.archiveRevealBar.visibility = View.GONE
     }
 
     private fun hideArchive() {

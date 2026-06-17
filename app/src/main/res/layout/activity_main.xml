@@ -108,13 +108,29 @@
                         android:layout_width="match_parent"
                         android:layout_height="0dp"
                         android:layout_weight="1"
+                        android:paddingBottom="80dp"
+                        android:clipToPadding="false"
                         android:visibility="gone" />
 
                     <androidx.recyclerview.widget.RecyclerView
                         android:id="@+id/homeList"
                         android:layout_width="match_parent"
                         android:layout_height="0dp"
-                        android:layout_weight="1" />
+                        android:layout_weight="1"
+                        android:paddingBottom="80dp"
+                        android:clipToPadding="false" />
+
+                    <TextView
+                        android:id="@+id/archiveRevealBar"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/colorSurfaceVariant"
+                        android:gravity="center"
+                        android:paddingTop="12dp"
+                        android:paddingBottom="12dp"
+                        android:text="Open Archive"
+                        android:textColor="?attr/colorOnSurface"
+                        android:visibility="gone" />
 
                     <TextView
                         android:id="@+id/emptyMessage"
@@ -197,7 +213,9 @@
                         android:id="@+id/archiveList"
                         android:layout_width="match_parent"
                         android:layout_height="0dp"
-                        android:layout_weight="1" />
+                        android:layout_weight="1"
+                        android:paddingBottom="80dp"
+                        android:clipToPadding="false" />
 
                     <TextView
                         android:id="@+id/archiveEmptyMessage"
