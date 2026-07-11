@@ -724,12 +724,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun getBrowserUserAgent(): String {
+        return WebSettings.getDefaultUserAgent(this)
+            .replace("; wv", "")
+            .replace(Regex("Version/\\d+\\.\\d+\\s?"), "")
+    }
+
     private fun applyDesktopMode() {
         val settings = binding.webView.settings
         if (desktopMode) {
             settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         } else {
-            settings.userAgentString = WebSettings.getDefaultUserAgent(this)
+            settings.userAgentString = getBrowserUserAgent()
         }
         settings.useWideViewPort = desktopMode
         settings.loadWithOverviewMode = desktopMode
@@ -748,7 +754,7 @@ class MainActivity : AppCompatActivity() {
         settings.userAgentString = if (useDesktop) {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         } else {
-            WebSettings.getDefaultUserAgent(this)
+            getBrowserUserAgent()
         }
         settings.useWideViewPort = useDesktop
         settings.loadWithOverviewMode = useDesktop
