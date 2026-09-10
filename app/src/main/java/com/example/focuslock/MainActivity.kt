@@ -1446,7 +1446,7 @@ class MainActivity : AppCompatActivity() {
                 }
             )
             binding.homeList.adapter = adapter
-            if (showVideoLength) fetchMissingVideoDurations(items)
+            if (showVideoLength) fetchMissingVideoDurations(items, adapter)
         }
 
         if (activeFilterTag != null) {
@@ -1458,15 +1458,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchMissingVideoDurations(items: List<HomeItem>) {
+    private fun fetchMissingVideoDurations(items: List<HomeItem>, adapter: HomeAdapter) {
         val progress = VideoProgressManager.getAllProgress(this)
         items.filterIsInstance<HomeItem.EntryItem>().forEach { item ->
             val videoId = VideoProgressManager.extractVideoId(item.entry.url) ?: return@forEach
             if ((progress[videoId]?.duration ?: 0.0) > 0.0) return@forEach
             if (VideoDurationManager.getDuration(this, videoId) != null) return@forEach
             VideoDurationManager.fetchAndCache(this, videoId) { duration ->
-                if (duration != null) runOnUiThread {
-                    if (showVideoLength && binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
+                if (duration != null && !isFinishing && !isDestroyed) runOnUiThread {
+                    if (!isFinishing && !isDestroyed && showVideoLength &&
+                        binding.homeScreen.visibility == View.VISIBLE && binding.homeList.adapter === adapter
+                    ) {
+                        adapter.notifyDurationChanged(videoId)
+                    }
                 }
             }
         }
@@ -3629,6 +3633,14 @@ class MainActivity : AppCompatActivity() {
             return when (currentItems[position]) {
                 is HomeItem.FolderItem -> VIEW_TYPE_FOLDER
                 is HomeItem.EntryItem -> VIEW_TYPE_ENTRY
+            }
+        }
+
+        fun notifyDurationChanged(videoId: String) {
+            currentItems.forEachIndexed { index, item ->
+                if (item is HomeItem.EntryItem && VideoProgressManager.extractVideoId(item.entry.url) == videoId) {
+                    notifyItemChanged(index)
+                }
             }
         }
 

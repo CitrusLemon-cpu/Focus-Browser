@@ -12,9 +12,11 @@ object VideoDurationManager {
     private const val PREFS_NAME = "focus_lock_prefs"
     private const val KEY_VIDEO_DURATIONS = "video_durations"
     private const val MAX_RESPONSE_CHARS = 2_000_000
+    private const val RETRY_DELAY_MILLIS = 5 * 60 * 1000L
 
     private val executor = Executors.newFixedThreadPool(3)
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
+    private val failedAt = ConcurrentHashMap<String, Long>()
 
     fun getDuration(context: Context, videoId: String): Long? {
         val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -31,12 +33,19 @@ object VideoDurationManager {
             callback(it)
             return
         }
+        val lastFailure = failedAt[videoId]
+        if (lastFailure != null && System.currentTimeMillis() - lastFailure < RETRY_DELAY_MILLIS) return
         if (!inFlight.add(videoId)) return
 
         val appContext = context.applicationContext
         executor.execute {
             val duration = fetchDuration(videoId)
-            if (duration != null) saveDuration(appContext, videoId, duration)
+            if (duration != null) {
+                saveDuration(appContext, videoId, duration)
+                failedAt.remove(videoId)
+            } else {
+                failedAt[videoId] = System.currentTimeMillis()
+            }
             inFlight.remove(videoId)
             callback(duration)
         }
