@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity() {
     private var invidiousInstance = "yewtu.be"
     private var showTags = false
     private var showVideoProgress = false
+    private var showVideoLength = false
     private var showConsumedToday = false
     private var pullToReloadEnabled = true
     private var sandboxExpiryHandler: android.os.Handler? = null
@@ -130,6 +131,7 @@ class MainActivity : AppCompatActivity() {
         archiveDateViewMode = ArchiveManager.isDateView(this)
         showTags = prefs.getBoolean("show_tags", false)
         showVideoProgress = prefs.getBoolean("show_video_progress", false)
+        showVideoLength = prefs.getBoolean("show_video_length", false)
         showConsumedToday = prefs.getBoolean("show_consumed_today", false)
         pullToReloadEnabled = prefs.getBoolean("pull_to_reload_enabled", true)
         applyDesktopMode()
@@ -282,6 +284,13 @@ class MainActivity : AppCompatActivity() {
         binding.switchShowVideoProgress.setOnCheckedChangeListener { _, isChecked ->
             showVideoProgress = isChecked
             prefs.edit().putBoolean("show_video_progress", isChecked).apply()
+            if (binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
+        }
+
+        binding.switchShowVideoLength.isChecked = showVideoLength
+        binding.switchShowVideoLength.setOnCheckedChangeListener { _, isChecked ->
+            showVideoLength = isChecked
+            prefs.edit().putBoolean("show_video_length", isChecked).apply()
             if (binding.homeScreen.visibility == View.VISIBLE) refreshHomeList()
         }
 
@@ -1298,6 +1307,7 @@ class MainActivity : AppCompatActivity() {
                 items,
                 showTags = showTags,
                 showVideoProgress = showVideoProgress,
+                showVideoLength = showVideoLength,
                 showConsumedToday = showConsumedToday,
                 wasVisitedToday = { url -> wasVisitedToday(url) },
                 onFolderClick = { folder ->
@@ -1436,6 +1446,7 @@ class MainActivity : AppCompatActivity() {
                 }
             )
             binding.homeList.adapter = adapter
+            if (showVideoLength) fetchMissingVideoDurations(items, adapter)
         }
 
         if (activeFilterTag != null) {
@@ -1444,6 +1455,24 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.fabNewFolder.visibility = View.VISIBLE
             updateBreadcrumb()
+        }
+    }
+
+    private fun fetchMissingVideoDurations(items: List<HomeItem>, adapter: HomeAdapter) {
+        val progress = VideoProgressManager.getAllProgress(this)
+        items.filterIsInstance<HomeItem.EntryItem>().forEach { item ->
+            val videoId = VideoProgressManager.extractVideoId(item.entry.url) ?: return@forEach
+            if ((progress[videoId]?.duration ?: 0.0) > 0.0) return@forEach
+            if (VideoDurationManager.getDuration(this, videoId) != null) return@forEach
+            VideoDurationManager.fetchAndCache(this, videoId) { duration ->
+                if (duration != null && !isFinishing && !isDestroyed) runOnUiThread {
+                    if (!isFinishing && !isDestroyed && showVideoLength &&
+                        binding.homeScreen.visibility == View.VISIBLE && binding.homeList.adapter === adapter
+                    ) {
+                        adapter.notifyDurationChanged(videoId)
+                    }
+                }
+            }
         }
     }
 
@@ -3565,6 +3594,7 @@ class MainActivity : AppCompatActivity() {
         items: List<HomeItem>,
         private val showTags: Boolean = false,
         private val showVideoProgress: Boolean = false,
+        private val showVideoLength: Boolean = false,
         private val showConsumedToday: Boolean = false,
         private val wasVisitedToday: (String) -> Boolean = { false },
         private val onFolderClick: (Folder) -> Unit,
@@ -3593,6 +3623,7 @@ class MainActivity : AppCompatActivity() {
         class EntryViewHolder(val wrapper: View) : RecyclerView.ViewHolder(wrapper) {
             val textView: TextView = wrapper.findViewById(android.R.id.text1)
             val deleteButton: ImageButton = wrapper.findViewById(android.R.id.button1)
+            val durationView: TextView = wrapper.findViewWithTag("durationView")
             val progressTrack: View = wrapper.findViewWithTag("progressTrack")
             val progressFill: View = wrapper.findViewWithTag("progressFill")
             val tagsRow: LinearLayout = wrapper.findViewWithTag("tagsRow")
@@ -3602,6 +3633,14 @@ class MainActivity : AppCompatActivity() {
             return when (currentItems[position]) {
                 is HomeItem.FolderItem -> VIEW_TYPE_FOLDER
                 is HomeItem.EntryItem -> VIEW_TYPE_ENTRY
+            }
+        }
+
+        fun notifyDurationChanged(videoId: String) {
+            currentItems.forEachIndexed { index, item ->
+                if (item is HomeItem.EntryItem && VideoProgressManager.extractVideoId(item.entry.url) == videoId) {
+                    notifyItemChanged(index)
+                }
             }
         }
 
@@ -3690,7 +3729,25 @@ class MainActivity : AppCompatActivity() {
                         setBackgroundResource(android.R.color.transparent)
                         contentDescription = "Delete"
                     }
+                    val durationText = TextView(parent.context).apply {
+                        tag = "durationView"
+                        textSize = 13f
+                        setTextColor(
+                            com.google.android.material.color.MaterialColors.getColor(
+                                this,
+                                com.google.android.material.R.attr.colorOnSurfaceVariant
+                            )
+                        )
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            marginStart = (8 * dp).toInt()
+                        }
+                        visibility = View.GONE
+                    }
                     row.addView(text)
+                    row.addView(durationText)
                     row.addView(deleteBtn)
                     wrapper.addView(row)
 
@@ -3814,6 +3871,17 @@ class MainActivity : AppCompatActivity() {
                         val typedValue = android.util.TypedValue()
                         vh.itemView.context.theme.resolveAttribute(android.R.attr.textColorPrimary, typedValue, true)
                         vh.textView.setTextColor(vh.itemView.context.getColor(typedValue.resourceId))
+                    }
+
+                    val videoId = VideoProgressManager.extractVideoId(item.entry.url)
+                    val progress = videoId?.let { VideoProgressManager.getProgress(vh.itemView.context, it) }
+                    val duration = progress?.duration?.takeIf { it > 0.0 }?.toLong()
+                        ?: videoId?.let { VideoDurationManager.getDuration(vh.itemView.context, it) }
+                    if (showVideoLength && duration != null) {
+                        vh.durationView.text = VideoDurationManager.formatDuration(duration)
+                        vh.durationView.visibility = View.VISIBLE
+                    } else {
+                        vh.durationView.visibility = View.GONE
                     }
 
                     val dp = vh.itemView.context.resources.displayMetrics.density
