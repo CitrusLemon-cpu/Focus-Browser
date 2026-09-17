@@ -40,7 +40,7 @@ class SettingsActivity : AppCompatActivity() {
 
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        SystemBarInsets.applySafeArea(binding.root)
+        SystemBarInsets.applySafeArea(binding.settingsContentContainer)
         setSupportActionBar(binding.toolbar)
 
         if (PasswordManager.isPasswordSet(this)) {
