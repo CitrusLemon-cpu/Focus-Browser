@@ -36,6 +36,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
 
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
